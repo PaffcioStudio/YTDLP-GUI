@@ -1,7 +1,21 @@
 #!/bin/bash
 
-echo "Budowanie YTDLP-GUI AppImage dla Linux"
-echo "======================================"
+# Sprawdzenie parametrów
+BUILD_TYPE=${1:-appimage}
+
+if [ "$BUILD_TYPE" = "deb" ]; then
+    echo "Budowanie pakietu .deb dla YTDLP-GUI"
+    echo "===================================="
+    exec ./build_deb.sh
+elif [ "$BUILD_TYPE" = "appimage" ]; then
+    echo "Budowanie YTDLP-GUI AppImage dla Linux"
+    echo "======================================"
+else
+    echo "Użycie: $0 [appimage|deb]"
+    echo "  appimage - buduje plik AppImage (domyślnie)"
+    echo "  deb      - buduje pakiet .deb"
+    exit 1
+fi
 
 # Kolory dla output
 RED='\033[0;31m'

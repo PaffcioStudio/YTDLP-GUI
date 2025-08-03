@@ -125,6 +125,10 @@ cd YTDLP-GUI
 chmod +x build.sh
 ./build.sh
 
+# Alternatywnie: wybierz typ pakietu podczas budowania
+./build.sh appimage  # Tworzy plik AppImage
+./build.sh deb       # Tworzy pakiet .deb
+
 # 3. Uruchom AppImage
 ./YTDLP-GUI-*.AppImage
 ```
@@ -165,7 +169,34 @@ pipx install -e .
 python3 yt.py
 ```
 
-#### Metoda 4: Arch Linux/Manjaro
+#### Metoda 4: Pakiet .deb (Ubuntu/Debian/Mint)
+```bash
+# 1. Zainstaluj wymagane pakiety systemowe
+sudo apt update
+sudo apt install python3-venv python3-full python3-pip libxcb-cursor0 libxcb-cursor-dev qt6-base-dev dpkg-dev
+
+# 2. Sklonuj repozytorium
+git clone https://github.com/twoje-repo/YTDLP-GUI.git
+cd YTDLP-GUI
+
+# 3. Zbuduj pakiet .deb
+chmod +x build_deb.sh
+./build_deb.sh
+
+# 4. Zainstaluj pakiet
+sudo dpkg -i ytdlp-gui_1.0.0_amd64.deb
+# W przypadku problemów z zależnościami:
+sudo apt-get install -f
+
+# 5. Uruchom aplikację
+ytdlp-gui
+# lub z menu aplikacji: Menu → Multimedia → YTDLP-GUI
+
+# Odinstalowanie pakietu:
+sudo apt remove ytdlp-gui
+```
+
+#### Metoda 5: Arch Linux/Manjaro
 ```bash
 # 1. Zainstaluj wymagane pakiety
 sudo pacman -S python python-pip python-pyqt6 ffmpeg
@@ -312,6 +343,24 @@ pipx install pyinstaller
 # Nadaj uprawnienia wykonywania:
 chmod +x build.sh
 ./build.sh
+
+# Dla skryptu budowania .deb:
+chmod +x build_deb.sh
+./build_deb.sh
+```
+
+#### Problemy z pakietem .deb
+```bash
+# Brak zależności po instalacji .deb:
+sudo apt-get install -f
+
+# Reinstalacja pakietu:
+sudo dpkg -r ytdlp-gui
+sudo dpkg -i ytdlp-gui_1.0.0_amd64.deb
+
+# Sprawdzenie poprawności pakietu:
+dpkg -l | grep ytdlp-gui
+dpkg -s ytdlp-gui
 ```
 
 ## 📄 Licencja
