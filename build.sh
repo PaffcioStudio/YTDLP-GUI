@@ -24,11 +24,11 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Sprawdzenie python3-venv
+# Sprawdzenie python3-venv i zależności Qt
 if ! python3 -c "import venv" 2>/dev/null; then
     echo -e "${YELLOW}python3-venv nie znaleziony. Instaluję wymagane pakiety...${NC}"
     sudo apt update
-    sudo apt install -y python3-venv python3-full python3-pip
+    sudo apt install -y python3-venv python3-full python3-pip libxcb-cursor0 libxcb-cursor-dev
     
     # Sprawdzenie czy instalacja się powiodła
     if ! python3 -c "import venv" 2>/dev/null; then
@@ -36,6 +36,10 @@ if ! python3 -c "import venv" 2>/dev/null; then
         echo -e "${YELLOW}sudo apt install python3-venv python3-full${NC}"
         exit 1
     fi
+else
+    echo -e "${YELLOW}Instalowanie zależności Qt dla AppImage...${NC}"
+    sudo apt update
+    sudo apt install -y libxcb-cursor0 libxcb-cursor-dev qt6-base-dev
 fi
 
 # Tworzenie środowiska wirtualnego
@@ -148,14 +152,25 @@ HERE="$(dirname "$(readlink -f "${0}")")"
 export APPDIR="$HERE"
 export PATH="$HERE/usr/bin:$PATH"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+
+# Qt environment variables for AppImage
+export QT_PLUGIN_PATH="$HERE/usr/plugins:$QT_PLUGIN_PATH"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$HERE/usr/plugins/platforms"
+export QT_QPA_PLATFORM="xcb"
+
+# Try to use system Qt libraries if AppImage Qt fails
+if [ -z "$QT_QPA_PLATFORM_PLUGIN_PATH_FALLBACK" ]; then
+    export QT_QPA_PLATFORM_PLUGIN_PATH_FALLBACK="/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms:/usr/lib/qt6/plugins/platforms"
+fi
+
 exec "$HERE/usr/bin/YTDLP-GUI" "$@"
 EOF
 
 chmod +x AppDir/AppRun
 
-# Użycie linuxdeploy do przygotowania AppDir
+# Użycie linuxdeploy do przygotowania AppDir z poprawkami dla Qt
 echo "Przygotowywanie AppDir z linuxdeploy..."
-./linuxdeploy-x86_64.AppImage --appdir AppDir --deploy-deps-only
+./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/YTDLP-GUI --library /usr/lib/x86_64-linux-gnu/libxcb-cursor.so.0
 
 # Tworzenie AppImage
 echo "Tworzenie AppImage..."
