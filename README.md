@@ -113,7 +113,7 @@ dist\YTDLP-GUI.exe
 git clone https://github.com/twoje-repo/YTDLP-GUI.git
 cd YTDLP-GUI
 
-# 2. Uruchom skrypt budowania
+# 2. Uruchom skrypt budowania (automatycznie tworzy środowisko wirtualne)
 chmod +x build.sh
 ./build.sh
 
@@ -121,27 +121,52 @@ chmod +x build.sh
 ./YTDLP-GUI-*.AppImage
 ```
 
-#### Metoda 2: Instalacja z pip (Ubuntu/Debian/Mint)
+#### Metoda 2: Środowisko wirtualne (Zalecane dla deweloperów)
 ```bash
 # 1. Zainstaluj wymagane pakiety systemowe
 sudo apt update
-sudo apt install python3 python3-pip python3-pyqt6 ffmpeg
+sudo apt install python3 python3-venv python3-full ffmpeg
 
-# 2. Sklonuj i uruchom
+# 2. Sklonuj repozytorium
 git clone https://github.com/twoje-repo/YTDLP-GUI.git
 cd YTDLP-GUI
-pip3 install -r requirements.txt
+
+# 3. Utwórz i aktywuj środowisko wirtualne
+python3 -m venv venv
+source venv/bin/activate
+
+# 4. Zainstaluj zależności i uruchom
+pip install -r requirements.txt
+python3 yt.py
+
+# 5. Deaktywuj środowisko (po zakończeniu)
+deactivate
+```
+
+#### Metoda 3: Instalacja systemowa (Ubuntu/Debian/Mint)
+```bash
+# 1. Zainstaluj wymagane pakiety systemowe
+sudo apt update
+sudo apt install python3 python3-pip python3-pyqt6 ffmpeg pipx
+
+# 2. Sklonuj i uruchom przez pipx (zalecane)
+git clone https://github.com/twoje-repo/YTDLP-GUI.git
+cd YTDLP-GUI
+pipx install -e .
+# lub bezpośrednio:
 python3 yt.py
 ```
 
-#### Metoda 3: Arch Linux/Manjaro
+#### Metoda 4: Arch Linux/Manjaro
 ```bash
 # 1. Zainstaluj wymagane pakiety
 sudo pacman -S python python-pip python-pyqt6 ffmpeg
 
-# 2. Sklonuj i uruchom
+# 2. Sklonuj i uruchom w środowisku wirtualnym
 git clone https://github.com/twoje-repo/YTDLP-GUI.git
 cd YTDLP-GUI
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 python yt.py
 ```
@@ -262,6 +287,25 @@ sudo apt install ffmpeg
 - Sprawdź poprawność danych logowania
 - Upewnij się, że konto jest aktywne
 - Użyj przycisku "Sprawdź status"
+
+#### "externally-managed-environment" (Ubuntu 23.04+, Debian 12+)
+```bash
+# Błąd przy pip install - użyj środowiska wirtualnego:
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Lub użyj pipx:
+sudo apt install pipx
+pipx install pyinstaller
+```
+
+#### Brak uprawnień do build.sh
+```bash
+# Nadaj uprawnienia wykonywania:
+chmod +x build.sh
+./build.sh
+```
 
 ## 📄 Licencja
 
