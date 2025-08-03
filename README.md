@@ -1,0 +1,280 @@
+# 🎬 YTDLP-GUI
+
+<div align="center">
+
+![YTDLP-GUI Logo](icon.ico)
+
+**Nowoczesny graficzny interfejs użytkownika dla yt-dlp**
+
+*Pobieraj filmy i muzykę z YouTube, CDA.pl i setek innych platform w kilku kliknięciach!*
+
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
+[![PyQt6](https://img.shields.io/badge/PyQt6-6.4+-green.svg)](https://pypi.org/project/PyQt6/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey.svg)](#instalacja)
+
+</div>
+
+## 📋 Spis treści
+
+- [🌟 Funkcje](#-funkcje)
+- [📸 Zrzuty ekranu](#-zrzuty-ekranu)
+- [⚡ Szybki start](#-szybki-start)
+- [🛠️ Instalacja](#-instalacja)
+  - [Windows](#windows)
+  - [Linux](#linux)
+- [💡 Użytkowanie](#-użytkowanie)
+- [🔧 Konfiguracja](#-konfiguracja)
+- [🤝 Wsparcie](#-wsparcie)
+- [📄 Licencja](#-licencja)
+
+## 🌟 Funkcje
+
+### 🎯 Główne możliwości
+- **📹 Pobieranie wideo** - Obsługa YouTube, Vimeo, Dailymotion i 1000+ innych platform
+- **🎵 Ekstraktowanie audio** - Konwersja do MP3, AAC, FLAC, OGG z wyborem jakości
+- **📋 Obsługa playlist** - Pobieranie całych playlist z możliwością filtrowania
+- **🔒 CDA Premium** - Pełne wsparcie dla kont CDA Premium z weryfikacją statusu
+- **⚡ System kolejki** - Dodawanie wielu linków do kolejki i pobieranie wsadowe
+- **🎨 Motywy wizualne** - Ciemny i jasny motyw interfejsu
+
+### 🛠️ Zaawansowane opcje
+- **📱 Wybór jakości** - Od 144p do 4K/8K z automatycznym wyborem najlepszej
+- **🎞️ Formaty wideo** - MP4, MKV, WEBM, AVI z różnymi kodekami
+- **🎧 Formaty audio** - MP3, AAC, FLAC, OGG, M4A, OPUS
+- **📝 Metadane** - Automatyczne dodawanie tytułów, opisów i miniaturek
+- **🌐 Napisy** - Pobieranie napisów w wielu językach
+- **🔄 Proxy i sieć** - Obsługa proxy, ograniczenie prędkości, wybór IP
+
+### 🎛️ Interfejs użytkownika
+- **🖱️ Intuicyjny interfejs** - Przejrzyste zakładki dla różnych funkcji
+- **📊 Monitoring postępu** - Szczegółowe informacje o pobieraniu w czasie rzeczywistym
+- **📋 Schowek** - Automatyczne wklejanie linków ze schowka
+- **💾 Zapamiętywanie ustawień** - Automatyczne zapisywanie preferencji
+- **🔍 Podgląd informacji** - Wyświetlanie szczegółów filmu przed pobraniem
+
+## 📸 Zrzuty ekranu
+
+<details>
+<summary>🖼️ Kliknij, aby zobaczyć interfejs</summary>
+
+### Zakładka Wideo
+*Główny interfejs do pobierania filmów z opcjami jakości i formatów*
+
+### Zakładka Audio
+*Ekstraktowanie dźwięku z filmów z wyborem jakości i formatów*
+
+### Zakładka Ustawienia
+*Konfiguracja ścieżek, kont CDA Premium i opcji zaawansowanych*
+
+### Zakładka Kolejka
+*Zarządzanie kolejką pobierania z możliwością wsadowego przetwarzania*
+
+</details>
+
+## ⚡ Szybki start
+
+1. **Pobierz i uruchom** aplikację zgodnie z instrukcjami dla Twojego systemu
+2. **Wklej link** do filmu YouTube/CDA w pole URL
+3. **Wybierz format** (wideo/audio) i jakość
+4. **Kliknij "Pobierz"** i ciesz się rezultatem!
+
+## 🛠️ Instalacja
+
+### Windows
+
+#### Metoda 1: Gotowy plik wykonywalny (Zalecane)
+```batch
+# Pobierz najnowszą wersję z GitHub Releases
+# Uruchom YTDLP-GUI.exe
+```
+
+#### Metoda 2: Budowanie ze źródeł
+```batch
+# 1. Sklonuj repozytorium
+git clone https://github.com/twoje-repo/YTDLP-GUI.git
+cd YTDLP-GUI
+
+# 2. Zainstaluj wymagane biblioteki
+pip install -r requirements.txt
+
+# 3. Zbuduj aplikację
+build.bat
+
+# 4. Uruchom z folderu dist
+dist\YTDLP-GUI.exe
+```
+
+### Linux
+
+#### Metoda 1: AppImage (Zalecane dla większości dystrybucji)
+```bash
+# 1. Sklonuj repozytorium
+git clone https://github.com/twoje-repo/YTDLP-GUI.git
+cd YTDLP-GUI
+
+# 2. Uruchom skrypt budowania
+chmod +x build.sh
+./build.sh
+
+# 3. Uruchom AppImage
+./YTDLP-GUI-*.AppImage
+```
+
+#### Metoda 2: Instalacja z pip (Ubuntu/Debian/Mint)
+```bash
+# 1. Zainstaluj wymagane pakiety systemowe
+sudo apt update
+sudo apt install python3 python3-pip python3-pyqt6 ffmpeg
+
+# 2. Sklonuj i uruchom
+git clone https://github.com/twoje-repo/YTDLP-GUI.git
+cd YTDLP-GUI
+pip3 install -r requirements.txt
+python3 yt.py
+```
+
+#### Metoda 3: Arch Linux/Manjaro
+```bash
+# 1. Zainstaluj wymagane pakiety
+sudo pacman -S python python-pip python-pyqt6 ffmpeg
+
+# 2. Sklonuj i uruchom
+git clone https://github.com/twoje-repo/YTDLP-GUI.git
+cd YTDLP-GUI
+pip install -r requirements.txt
+python yt.py
+```
+
+### 📋 Wymagania systemowe
+
+#### Windows
+- **System:** Windows 10/11 (64-bit)
+- **Python:** 3.8+ (opcjonalnie, jeśli budujesz ze źródeł)
+- **Przestrzeń:** ~200 MB
+
+#### Linux
+- **System:** Ubuntu 20.04+, Debian 11+, Linux Mint 20+, Arch Linux
+- **Python:** 3.8+
+- **Biblioteki:** `python3-pyqt6`, `python3-pip`
+- **Opcjonalnie:** `ffmpeg` (automatycznie pobierany na Windows)
+
+## 💡 Użytkowanie
+
+### 🎬 Pobieranie wideo
+1. Przejdź do zakładki **"Wideo"**
+2. Wklej link w pole **"URL"**
+3. Wybierz **format** (MP4, MKV, WEBM) i **jakość**
+4. Opcjonalnie ustaw **ścieżkę wyjściową** i **szablon nazwy**
+5. Kliknij **"Pobierz"**
+
+### 🎵 Ekstraktowanie audio
+1. Przejdź do zakładki **"Audio"**
+2. Wklej link w pole **"URL"**
+3. Wybierz **format audio** (MP3, AAC, FLAC) i **jakość**
+4. Zaznacz opcje **metadanych** i **miniaturek**
+5. Kliknij **"Pobierz"**
+
+### 📋 Praca z playlistami
+1. Przejdź do zakładki **"Playlista"**
+2. Wklej link do playlisty
+3. Ustaw **zakres elementów** (np. 1-10, 5,7,9)
+4. Wybierz opcje **losowania** lub **odwracania kolejności**
+5. Kliknij **"Pobierz"**
+
+### 🔒 Konfiguracja CDA Premium
+1. Przejdź do zakładki **"Ustawienia"**
+2. W sekcji **"CDA Premium"** wprowadź:
+   - **Email** Twojego konta CDA
+   - **Hasło** do konta
+3. Kliknij **"Sprawdź status"** aby zweryfikować dane
+4. Zapisz ustawienia
+
+### ⚡ System kolejki
+1. Przejdź do zakładki **"Kolejka"**
+2. Dodaj linki przez:
+   - **"Wklej i dodaj"** - automatyczne dodanie ze schowka
+   - **"Dodaj URL"** - ręczne wprowadzenie
+3. Skonfiguruj ustawienia dla kolejki
+4. Kliknij **"Rozpocznij kolejkę"**
+
+## 🔧 Konfiguracja
+
+### 🛠️ Ustawienia zaawansowane
+
+#### Ścieżki aplikacji
+- **yt-dlp:** Ścieżka do wykonywalnego pliku yt-dlp
+- **FFmpeg:** Ścieżka do FFmpeg (auto-pobieranie na Windows)
+- **Katalog wyjściowy:** Domyślny folder dla pobranych plików
+
+#### Opcje sieciowe
+- **Proxy:** Konfiguracja serwera proxy (http://proxy:port)
+- **Ograniczenie prędkości:** Maksymalna prędkość pobierania
+- **Ponowne próby:** Liczba prób w przypadku błędu
+- **Force IPv4/IPv6:** Wymuszenie konkretnej wersji protokołu IP
+
+#### Szablony nazw plików
+```
+%(title)s.%(ext)s                    # Tytuł.rozszerzenie
+%(uploader)s - %(title)s.%(ext)s     # Autor - Tytuł.rozszerzenie
+%(upload_date)s %(title)s.%(ext)s    # Data Tytuł.rozszerzenie
+```
+
+### 🎨 Personalizacja
+- **Motyw:** Jasny / Ciemny
+- **Automatyczne dodawanie do kolejki:** Włącz/wyłącz
+- **Sprawdzanie aktualizacji:** Automatyczne aktualizacje yt-dlp
+
+## 🤝 Wsparcie
+
+### 🐛 Zgłaszanie błędów
+Jeśli napotkasz problem:
+1. Sprawdź **logi aplikacji** w folderze `VideoDownloader/logs/`
+2. Zgłoś błąd na [GitHub Issues](https://github.com/twoje-repo/YTDLP-GUI/issues)
+3. Dołącz informacje o systemie i kroki do reprodukcji
+
+### 💬 Pomoc i wsparcie
+- **GitHub Discussions:** Pytania i dyskusje
+- **Wiki:** Szczegółowa dokumentacja
+- **Email:** support@ytdlp-gui.com
+
+### 🔧 Problemy i rozwiązania
+
+#### "Nie można znaleźć yt-dlp"
+```bash
+# Linux: Zainstaluj yt-dlp
+pip3 install yt-dlp
+# lub
+sudo apt install yt-dlp
+
+# Windows: Aplikacja pobierze automatycznie
+```
+
+#### "Błąd FFmpeg"
+```bash
+# Linux: Zainstaluj FFmpeg
+sudo apt install ffmpeg
+
+# Windows: Włącz auto-pobieranie w ustawieniach
+```
+
+#### Problemy z CDA Premium
+- Sprawdź poprawność danych logowania
+- Upewnij się, że konto jest aktywne
+- Użyj przycisku "Sprawdź status"
+
+## 📄 Licencja
+
+Ten projekt jest udostępniony na licencji MIT. Zobacz plik [LICENSE](LICENSE) dla szczegółów.
+
+---
+
+<div align="center">
+
+**🌟 Jeśli YTDLP-GUI jest przydatne, zostaw gwiazdkę na GitHub! 🌟**
+
+Made with ❤️ by [Twoje Imię](https://github.com/twoj-profil)
+
+[⬆️ Powrót na górę](#-ytdlp-gui)
+
+</div>
