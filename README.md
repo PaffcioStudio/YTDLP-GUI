@@ -61,22 +61,22 @@
 ### Zakładka Wideo
 *Główny interfejs do pobierania filmów z opcjami jakości i formatów*
 
-![Zakładka Wideo](wideo.png)
+![Zakładka Wideo](screenshot/wideo.png)
 
 ### Zakładka Audio
 *Ekstraktowanie dźwięku z filmów z wyborem jakości i formatów*
 
-![Zakładka Audio](audio.png)
+![Zakładka Audio](screenshot/audio.png)
 
 ### Zakładka Ustawienia
 *Konfiguracja ścieżek, kont CDA Premium i opcji zaawansowanych*
 
-![Zakładka Ustawienia](ustawienia.png)
+![Zakładka Ustawienia](screenshot/ustawienia.png)
 
 ### Zakładka Kolejka
 *Zarządzanie kolejką pobierania z możliwością wsadowego przetwarzania*
 
-![Zakładka Kolejka](kolejka.png)
+![Zakładka Kolejka](screenshot/kolejka.png)
 
 </details>
 
