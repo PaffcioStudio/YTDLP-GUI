@@ -34,7 +34,7 @@
 - **📹 Pobieranie wideo** - Obsługa YouTube, Vimeo, Dailymotion i 1000+ innych platform
 - **🎵 Ekstraktowanie audio** - Konwersja do MP3, AAC, FLAC, OGG z wyborem jakości
 - **📋 Obsługa playlist** - Pobieranie całych playlist z możliwością filtrowania
-- **🔒 CDA Premium** - Pełne wsparcie dla kont CDA Premium z weryfikacją statusu
+- **🔒 CDA Premium** - Pełne wsparcie dla kont CDA Premium z weryfikacją statusu (wymagane zalogowanie poprzez email i hasło w ustawieniach programu)
 - **⚡ System kolejki** - Dodawanie wielu linków do kolejki i pobieranie wsadowe
 - **🎨 Motywy wizualne** - Ciemny i jasny motyw interfejsu
 
