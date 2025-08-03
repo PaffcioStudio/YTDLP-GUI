@@ -260,8 +260,7 @@ Jeśli napotkasz problem:
 
 ### 💬 Pomoc i wsparcie
 - **GitHub Discussions:** Pytania i dyskusje
-- **Wiki:** Szczegółowa dokumentacja
-- **Email:** support@ytdlp-gui.com
+- **Email:** paffciostudio@gmail.com
 
 ### 🔧 Problemy i rozwiązania
 
