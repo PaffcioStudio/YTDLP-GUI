@@ -35,7 +35,7 @@
 - **🎵 Ekstraktowanie audio** - Konwersja do MP3, AAC, FLAC, OGG z wyborem jakości
 - **📋 Obsługa playlist** - Pobieranie całych playlist z możliwością filtrowania
 - **🔒 CDA Premium** - Pełne wsparcie dla kont CDA Premium z weryfikacją statusu (wymagane zalogowanie poprzez email i hasło w ustawieniach programu)
-- **⚡ System kolejki** - Dodawanie wielu linków do kolejki i pobieranie wsadowe
+- **⚡ System kolejki** - Dodawanie wielu linków do kolejki i pobieranie wsadowe z obsługą nieudanych pobierań
 - **🎨 Motywy wizualne** - Ciemny i jasny motyw interfejsu
 
 ### 🛠️ Zaawansowane opcje
@@ -45,6 +45,7 @@
 - **📝 Metadane** - Automatyczne dodawanie tytułów, opisów i miniaturek
 - **🌐 Napisy** - Pobieranie napisów w wielu językach
 - **🔄 Proxy i sieć** - Obsługa proxy, ograniczenie prędkości, wybór IP
+- **📦 Auto-pobieranie zależności** - Automatyczne pobieranie yt-dlp i FFmpeg na Windows i Linux
 
 ### 🎛️ Interfejs użytkownika
 - **🖱️ Intuicyjny interfejs** - Przejrzyste zakładki dla różnych funkcji
@@ -137,7 +138,7 @@ chmod +x build.sh
 ```bash
 # 1. Zainstaluj wymagane pakiety systemowe
 sudo apt update
-sudo apt install python3 python3-venv python3-full ffmpeg
+sudo apt install python3 python3-venv python3-full
 
 # 2. Sklonuj repozytorium
 git clone https://github.com/twoje-repo/YTDLP-GUI.git
@@ -150,6 +151,7 @@ source venv/bin/activate
 # 4. Zainstaluj zależności i uruchom
 pip install -r requirements.txt
 python3 yt.py
+# yt-dlp i FFmpeg zostaną pobrane automatycznie przy pierwszym uruchomieniu
 
 # 5. Deaktywuj środowisko (po zakończeniu)
 deactivate
@@ -159,7 +161,7 @@ deactivate
 ```bash
 # 1. Zainstaluj wymagane pakiety systemowe
 sudo apt update
-sudo apt install python3 python3-pip python3-pyqt6 ffmpeg pipx
+sudo apt install python3 python3-pip python3-pyqt6 pipx
 
 # 2. Sklonuj i uruchom przez pipx (zalecane)
 git clone https://github.com/twoje-repo/YTDLP-GUI.git
@@ -167,6 +169,7 @@ cd YTDLP-GUI
 pipx install -e .
 # lub bezpośrednio:
 python3 yt.py
+# yt-dlp i FFmpeg zostaną pobrane automatycznie przy pierwszym uruchomieniu
 ```
 
 #### Metoda 4: Pakiet .deb (Ubuntu/Debian/Mint)
@@ -184,7 +187,7 @@ chmod +x build_deb.sh
 ./build_deb.sh
 
 # 4. Zainstaluj pakiet
-sudo dpkg -i ytdlp-gui_1.0.0_amd64.deb
+sudo dpkg -i ytdlp-gui_1.0.1_amd64.deb
 # W przypadku problemów z zależnościami:
 sudo apt-get install -f
 
@@ -199,7 +202,7 @@ sudo apt remove ytdlp-gui
 #### Metoda 5: Arch Linux/Manjaro
 ```bash
 # 1. Zainstaluj wymagane pakiety
-sudo pacman -S python python-pip python-pyqt6 ffmpeg
+sudo pacman -S python python-pip python-pyqt6
 
 # 2. Sklonuj i uruchom w środowisku wirtualnym
 git clone https://github.com/twoje-repo/YTDLP-GUI.git
@@ -208,6 +211,7 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 python yt.py
+# yt-dlp i FFmpeg zostaną pobrane automatycznie przy pierwszym uruchomieniu
 ```
 
 ### 📋 Wymagania systemowe
@@ -216,12 +220,14 @@ python yt.py
 - **System:** Windows 10/11 (64-bit)
 - **Python:** 3.8+ (opcjonalnie, jeśli budujesz ze źródeł)
 - **Przestrzeń:** ~200 MB
+- **Zależności:** yt-dlp i FFmpeg pobierane automatycznie przy pierwszym uruchomieniu
 
 #### Linux
 - **System:** Ubuntu 20.04+, Debian 11+, Linux Mint 20+, Arch Linux
 - **Python:** 3.8+
 - **Biblioteki:** `python3-pyqt6`, `python3-pip`
-- **Opcjonalnie:** `ffmpeg` (automatycznie pobierany na Windows)
+- **Przestrzeń:** ~428 MB
+- **Zależności:** yt-dlp i FFmpeg pobierane automatycznie przy pierwszym uruchomieniu
 
 ## 💡 Użytkowanie
 
@@ -259,16 +265,23 @@ python yt.py
 2. Dodaj linki przez:
    - **"Wklej i dodaj"** - automatyczne dodanie ze schowka
    - **"Dodaj URL"** - ręczne wprowadzenie
-3. Skonfiguruj ustawienia dla kolejki
-4. Kliknij **"Rozpocznij kolejkę"**
+3. Zarządzaj kolejką:
+   - **Przenoszenie:** Przeciągnij elementy aby zmienić kolejność
+   - **Usuwanie:** Zaznacz i usuń niepotrzebne elementy
+   - **Duplikaty:** Automatyczne wykrywanie i opcje obsługi
+4. Obsługa nieudanych pobierań:
+   - **Oznaczenie:** Nieudane pobierania są oznaczone kolorem
+   - **Ponowienie:** Opcja ponowienia nieudanych pobierań
+   - **Wznowienie:** Przywracanie kolejki po restarcie aplikacji
+5. Skonfiguruj ustawienia dla kolejki i kliknij **"Rozpocznij kolejkę"**
 
 ## 🔧 Konfiguracja
 
 ### 🛠️ Ustawienia zaawansowane
 
 #### Ścieżki aplikacji
-- **yt-dlp:** Ścieżka do wykonywalnego pliku yt-dlp
-- **FFmpeg:** Ścieżka do FFmpeg (auto-pobieranie na Windows)
+- **yt-dlp:** Ścieżka do wykonywalnego pliku yt-dlp (auto-pobieranie dostępne)
+- **FFmpeg:** Ścieżka do FFmpeg (auto-pobieranie dostępne)
 - **Katalog wyjściowy:** Domyślny folder dla pobranych plików
 
 #### Opcje sieciowe
@@ -288,6 +301,22 @@ python yt.py
 - **Motyw:** Jasny / Ciemny
 - **Automatyczne dodawanie do kolejki:** Włącz/wyłącz
 - **Sprawdzanie aktualizacji:** Automatyczne aktualizacje yt-dlp
+- **Auto-pobieranie zależności:** Automatyczne pobieranie yt-dlp i FFmpeg
+
+### 🔄 Zarządzanie zależnościami
+Aplikacja automatycznie zarządza wymaganymi narzędziami:
+
+#### yt-dlp
+- **Windows:** Pobieranie do `lib/yt-dlp.exe`
+- **Linux:** Pobieranie do `lib/yt-dlp`
+- **Aktualizacje:** Automatyczne sprawdzanie i pobieranie najnowszej wersji
+- **Ręczna aktualizacja:** Przycisk "Aktualizuj yt-dlp" w ustawieniach
+
+#### FFmpeg
+- **Windows:** Pobieranie pełnej paczki do `lib/ffmpeg/`
+- **Linux:** Pobieranie do `lib/ffmpeg/`
+- **Ręczne pobieranie:** Przycisk "Pobierz FFmpeg" w ustawieniach
+- **Wykrywanie:** Sprawdzanie systemowej instalacji FFmpeg jako alternatywa
 
 ## 🤝 Wsparcie
 
@@ -305,20 +334,27 @@ Jeśli napotkasz problem:
 
 #### "Nie można znaleźć yt-dlp"
 ```bash
-# Linux: Zainstaluj yt-dlp
+# Aplikacja pobierze automatycznie przy pierwszym uruchomieniu
+# Jeśli chcesz zainstalować ręcznie:
+
+# Linux: 
 pip3 install yt-dlp
 # lub
 sudo apt install yt-dlp
 
-# Windows: Aplikacja pobierze automatycznie
+# Windows: Aplikacja pobierze automatycznie do folderu lib/
 ```
 
 #### "Błąd FFmpeg"
 ```bash
-# Linux: Zainstaluj FFmpeg
+# Aplikacja pobierze automatycznie przy pierwszym uruchomieniu
+# Jeśli chcesz zainstalować ręcznie:
+
+# Linux: 
 sudo apt install ffmpeg
 
-# Windows: Włącz auto-pobieranie w ustawieniach
+# Windows: Aplikacja pobierze automatycznie do folderu lib/ffmpeg/
+# Możesz także włączyć auto-pobieranie w ustawieniach
 ```
 
 #### Problemy z CDA Premium
@@ -356,7 +392,7 @@ sudo apt-get install -f
 
 # Reinstalacja pakietu:
 sudo dpkg -r ytdlp-gui
-sudo dpkg -i ytdlp-gui_1.0.0_amd64.deb
+sudo dpkg -i ytdlp-gui_1.0.1_amd64.deb
 
 # Sprawdzenie poprawności pakietu:
 dpkg -l | grep ytdlp-gui

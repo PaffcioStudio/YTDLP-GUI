@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTextEdit, QComboBox, QCheckBox,
     QSpinBox, QFormLayout, QGroupBox, QFileDialog, QProgressBar,
-    QMessageBox, QScrollArea, QListWidget, QInputDialog, QStyle
+    QMessageBox, QScrollArea, QListWidget, QListWidgetItem, QInputDialog, QStyle
 )
 from PyQt6.QtCore import QThread, pyqtSignal, Qt, QSettings, QSize
 from PyQt6.QtGui import QClipboard, QIcon, QPalette, QColor, QFont
@@ -33,11 +33,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 LIBS_DIR = app_data_base_dir / "libs"
+TOOLS_DIR = app_data_base_dir / "tools"  # Nowy folder dla narzędzi
 YTDLP_PATH_WINDOWS = LIBS_DIR / "yt-dlp.exe"
+YTDLP_PATH_LINUX = TOOLS_DIR / "yt-dlp"  # Ścieżka dla Linux
 FFMPEG_DIR = LIBS_DIR / "ffmpeg"
 FFMPEG_BIN_DIR = FFMPEG_DIR / "bin"
 FFMPEG_PATH_WINDOWS = FFMPEG_BIN_DIR / "ffmpeg.exe"
+FFMPEG_PATH_LINUX = TOOLS_DIR / "ffmpeg"  # Ścieżka dla Linux
 FFMPEG_DOWNLOAD_URL_WINDOWS = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+FFMPEG_DOWNLOAD_URL_LINUX = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
 
 DETAILED_PROGRESS_REGEX = re.compile(r"\[download\]\s+([\d.]+)\%(?:.*?(?:of|\s+)\s*([\d.]+\S+))?(?:.*?at\s+([\d.]+\S+)\/s)?.*")
 
@@ -69,16 +73,49 @@ class CDAStatusCheckThread(QThread):
             return
 
         try:
+            # Najpierw test logowania z podstawowym filmem
+            basic_test_result = self._test_basic_login()
+            if not basic_test_result['success']:
+                self.finished_signal.emit(False, basic_test_result['message'])
+                return
+            
+            # Następnie test Premium z filmem premium
+            premium_test_result = self._test_premium_access()
+            
+            # Formatuj wynik końcowy
+            if basic_test_result['success']:
+                if premium_test_result['is_premium']:
+                    message = f"✅ Zalogowano pomyślnie! Posiadasz dostęp do CDA Premium"
+                else:
+                    message = f"✅ Zalogowano pomyślnie! Posiadasz konto podstawowe bez Premium"
+
+                self.finished_signal.emit(True, message)
+            else:
+                self.finished_signal.emit(False, basic_test_result['message'])
+                
+        except Exception as e:
+            logger.error(f"Błąd podczas sprawdzania CDA: {e}")
+            self.finished_signal.emit(False, f"Błąd podczas sprawdzania: {str(e)}")
+
+    def _test_basic_login(self):
+        """Test podstawowego logowania z publicznie dostępnym filmem."""
+        try:
+            # Użyjemy URL publicznego filmu do testu logowania
+            test_url = "https://www.cda.pl/video/2292883791"  # Publiczny film testowy
+            
             command = [
                 str(self.ytdlp_path),
                 "--username", self.email,
                 "--password", self.password,
                 "--verbose",
-                "https://www.cda.pl/" # Używamy generycznego URL do sprowokowania logowania
+                "--simulate",
+                "--no-download",
+                "--get-title",  # Tylko pobierz tytuł
+                test_url
             ]
+            
             creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-
-            self.process = subprocess.Popen(
+            process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -88,81 +125,92 @@ class CDAStatusCheckThread(QThread):
                 creationflags=creationflags
             )
 
-            if not self.process or not self.process.stderr:
-                self.finished_signal.emit(False, "Nie udało się uruchomić procesu weryfikacji.")
-                logger.error("Nie udało się utworzyć procesu Popen lub jego strumienia stderr dla CDAStatusCheckThread.")
-                return
-
-            output = ""
-            while True:
-                line = self.process.stderr.readline()
-                if not line and self.process.poll() is not None:
-                    break
-                if line:
-                    output += line
-                    logger.debug(f"[CDA Check]: {line.strip()}")
-                    # Sukces logowania
-                    if "[cda] Logged in as" in line:
-                        self.process.terminate()
-                        self.finished_signal.emit(True, "Zalogowano pomyślnie.")
-                        return
-                    # Typowe błędy logowania
-                    if "Unable to log in" in line:
-                        self.process.terminate()
-                        self.finished_signal.emit(False, "Błąd logowania: Nieprawidłowe dane.")
-                        return
-                    # Błąd połączenia z CDA
-                    if "ERROR: Unable to download webpage" in line or "ERROR: Unable to extract" in line:
-                        self.process.terminate()
-                        self.finished_signal.emit(False, "Błąd połączenia z CDA. Sprawdź internet lub dostępność strony.")
-                        return
-                    # Błąd autoryzacji (np. CAPTCHA, blokada konta)
-                    if "ERROR: This video is only available for registered users" in line:
-                        self.process.terminate()
-                        self.finished_signal.emit(False, "Wymagane konto CDA Premium lub dodatkowa autoryzacja.")
-                        return
-                    # Błąd limitu prób logowania
-                    if "too many login attempts" in line or "temporarily blocked" in line:
-                        self.process.terminate()
-                        self.finished_signal.emit(False, "Zbyt wiele prób logowania. Konto tymczasowo zablokowane.")
-                        return
-            self.process.wait()
-            # Ostateczne sprawdzenie, jeśli nie znaleziono wcześniej
-            if "[cda] Logged in as" in output:
-                self.finished_signal.emit(True, "Zalogowano pomyślnie.")
-            elif "Unable to log in" in output:
-                self.finished_signal.emit(False, "Błąd logowania: Nieprawidłowe dane.")
-            elif "ERROR: Unable to download webpage" in output or "ERROR: Unable to extract" in output:
-                self.finished_signal.emit(False, "Błąd połączenia z CDA. Sprawdź internet lub dostępność strony.")
-            elif "ERROR: This video is only available for registered users" in output:
-                self.finished_signal.emit(False, "Wymagane konto CDA Premium lub dodatkowa autoryzacja.")
-            elif "too many login attempts" in output or "temporarily blocked" in output:
-                self.finished_signal.emit(False, "Zbyt wiele prób logowania. Konto tymczasowo zablokowane.")
-            elif "Successfully authenticated" in output or "Authentication succeeded" in output:
-                self.finished_signal.emit(True, "Logowanie prawdopodobnie powiodło się (brak typowego komunikatu CDA, ale nie wykryto błędów).")
+            stdout, stderr = process.communicate(timeout=30)
+            output = stdout + stderr
+            
+            logger.debug(f"[CDA Basic Test Output]: {output}")
+            
+            # Sprawdź czy logowanie się powiodło
+            if "cda-bearer" in output or "Loading cda-bearer" in output:
+                # Bearer token oznacza pomyślne logowanie
+                return {'success': True, 'message': 'Logowanie pomyślne (wykryto token autoryzacji)'}
+            elif "Unable to log in" in output or "Invalid username or password" in output:
+                return {'success': False, 'message': 'Nieprawidłowe dane logowania'}
+            elif "HTTP Error 403" in output and "cda-bearer" not in output:
+                return {'success': False, 'message': 'Błąd autoryzacji - sprawdź dane logowania'}
+            elif process.returncode == 0 and len(stdout.strip()) > 0:
+                # Jeśli tytuł został pobrany bez błędów, logowanie się powiodło
+                return {'success': True, 'message': 'Logowanie pomyślne'}
             else:
-                # Heurystyka: jeśli nie ma typowych błędów, a yt-dlp nie zwraca komunikatu sukcesu, ale nie ma też komunikatów o błędzie
-                if "ERROR" not in output and "Unable to log in" not in output and "temporarily blocked" not in output:
-                    self.finished_signal.emit(True, "Test nie zwrócił błedów. Wygląda na poprawne dane logowania.")
-                else:
-                    self.finished_signal.emit(False, "Nie udało się zweryfikować statusu. Sprawdź dane lub spróbuj ponownie.")
-
-        except FileNotFoundError:
-            self.finished_signal.emit(False, f"Błąd: Nie znaleziono yt-dlp w '{self.ytdlp_path}'")
+                return {'success': False, 'message': 'Nie udało się nawiązać połączenia z CDA. Upewnij się że dane konta są poprawne!'}
+                
+        except subprocess.TimeoutExpired:
+            return {'success': False, 'message': 'Timeout podczas sprawdzania logowania'}
         except Exception as e:
-            logger.error(f"Błąd podczas sprawdzania statusu CDA: {e}", exc_info=True)
-            self.finished_signal.emit(False, f"Błąd: {e}")
+            logger.error(f"Błąd podstawowego testu CDA: {e}")
+            return {'success': False, 'message': f'Błąd testu: {str(e)}'}
 
-    def stop(self):
-        if self.process and self.process.poll() is None:
-            self.process.terminate()
+    def _test_premium_access(self):
+        """Test dostępu do Premium sprawdzając film premium."""
+        try:
+            # Test z filmem premium (ma /vfilm na końcu)
+            premium_test_url = "https://www.cda.pl/video/2557979760/vfilm"  # Przykładowy film premium
+            
+            command = [
+                str(self.ytdlp_path),
+                "--username", self.email,
+                "--password", self.password,
+                "--verbose",
+                "--simulate",
+                "--no-download",
+                "--get-title",
+                premium_test_url
+            ]
+            
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                encoding='utf-8',
+                errors='ignore',
+                creationflags=creationflags
+            )
+
+            stdout, stderr = process.communicate(timeout=30)
+            output = stdout + stderr
+            
+            logger.debug(f"[CDA Premium Test Output]: {output}")
+            
+            # Sprawdź czy użytkownik ma dostęp Premium
+            if "Video requires CDA Premium - subscription needed" in output:
+                return {'is_premium': False, 'reason': 'Konto bez Premium - wymagana subskrypcja'}
+            elif "premium account required" in output.lower() or "requires premium" in output.lower():
+                return {'is_premium': False, 'reason': 'Wymagane konto Premium'}
+            elif process.returncode == 0 and len(stdout.strip()) > 0:
+                # Jeśli tytuł został pobrany bez błędów, prawdopodobnie ma Premium
+                return {'is_premium': True}
+            elif "cda-bearer" in output and process.returncode != 0:
+                # Zalogowany ale nie ma dostępu do Premium
+                return {'is_premium': False, 'reason': 'Brak dostępu Premium'}
+            else:
+                # Nie udało się określić - zakładamy brak Premium
+                return {'is_premium': False, 'reason': 'Nie można określić statusu Premium'}
+                
+        except subprocess.TimeoutExpired:
+            return {'is_premium': False, 'reason': 'Timeout podczas sprawdzania Premium'}
+        except Exception as e:
+            logger.error(f"Błąd testu Premium CDA: {e}")
+            return {'is_premium': False, 'reason': f'Błąd testu Premium: {str(e)}'}
+
 
 
 class YTDLPThread(QThread):
     progress_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bool)
     progress_percent_signal = pyqtSignal(int)
-    progress_detailed_signal = pyqtSignal(int, str, str, str)
+    progress_detailed_signal = pyqtSignal(str, int, str, str)  # component_name, percent, downloaded_mb, total_mb
 
     def __init__(self, command, parent=None):
         super().__init__(parent)
@@ -211,7 +259,30 @@ class YTDLPThread(QThread):
                             total_size_str = match.group(2) if match.group(2) else "N/A"
                             speed_match = match.group(3)
                             speed_str = speed_match + "/s" if speed_match else "N/A"
-                            self.progress_detailed_signal.emit(percent, total_size_str, speed_str, line)
+                            
+                            # Oblicz ile już pobrano na podstawie procentu i całkowitego rozmiaru
+                            downloaded_str = "N/A"
+                            if total_size_str != "N/A" and percent > 0:
+                                try:
+                                    # Usuń jednostkę i zamień na MB
+                                    total_size_value = float(total_size_str.replace('MiB', '').replace('MB', '').replace('KiB', '').replace('KB', '').replace('GiB', '').replace('GB', ''))
+                                    
+                                    # Sprawdź jednostkę i przekonwertuj na MB
+                                    if 'GiB' in total_size_str or 'GB' in total_size_str:
+                                        total_mb = total_size_value * 1024 if 'GiB' in total_size_str else total_size_value * 1000
+                                    elif 'KiB' in total_size_str or 'KB' in total_size_str:
+                                        total_mb = total_size_value / 1024 if 'KiB' in total_size_str else total_size_value / 1000
+                                    else:  # MiB lub MB
+                                        total_mb = total_size_value
+                                    
+                                    # Oblicz ile pobrano
+                                    downloaded_mb = (percent / 100.0) * total_mb
+                                    downloaded_str = f"{downloaded_mb:.1f} MB"
+                                    total_size_str = f"{total_mb:.1f} MB"
+                                except (ValueError, AttributeError):
+                                    downloaded_str = "N/A"
+                            
+                            self.progress_detailed_signal.emit("wideo", percent, downloaded_str, total_size_str)
 
                         except (ValueError, IndexError) as e:
                             logger.debug(f"Failed to parse detailed progress from line '{line}': {e}")
@@ -221,7 +292,7 @@ class YTDLPThread(QThread):
             returncode = self.process.wait()
             logger.info(f"Proces zakończony z kodem: {returncode}")
             if returncode == 0:
-                self.progress_detailed_signal.emit(100, "N/A", "N/A", "[download] 100%")
+                self.progress_detailed_signal.emit("wideo", 100, "Ukończono", "Ukończono")
 
             self.finished_signal.emit(returncode == 0)
 
@@ -261,11 +332,16 @@ class YTDLPThread(QThread):
                 logger.error(f"Błąd podczas zatrzymywania procesu: {e}", exc_info=True)
         else:
             logger.info("Próba zatrzymania, ale proces nie działa lub już się zakończył.")
+        
+        # Wyślij sygnał o niepowodzeniu gdy zatrzymujemy pobieranie ręcznie
+        self.finished_signal.emit(False)
 
 
 class UpdateYTDLPThread(QThread):
     finished_signal = pyqtSignal(bool, str)
     progress_signal = pyqtSignal(str)
+    progress_percent_signal = pyqtSignal(int)  # Nowy sygnał dla procentów
+    progress_detailed_signal = pyqtSignal(str, int, str, str)  # Sygnał dla szczegółowych informacji: nazwa, procenty, pobrany MB, całkowity MB
 
     def __init__(self, yt_dlp_path, main_window: 'YTDLPGUI', parent=None):
         super().__init__(parent)
@@ -290,7 +366,8 @@ class UpdateYTDLPThread(QThread):
             latest_version = data.get("tag_name", "")
             assets = data.get("assets", [])
             exe_url = None
-            target_yt_dlp_path = YTDLP_PATH_WINDOWS if os.name == 'nt' else self.yt_dlp_path
+            linux_url = None
+            target_yt_dlp_path = YTDLP_PATH_WINDOWS if os.name == 'nt' else YTDLP_PATH_LINUX
 
             if os.name == 'nt':
                 target_yt_dlp_path.parent.mkdir(parents=True, exist_ok=True)
@@ -313,7 +390,25 @@ class UpdateYTDLPThread(QThread):
                     logger.error("Nie znaleziono pliku yt-dlp.exe w zasobach GitHub.")
                     self.check_local_ytdlp(str(self.yt_dlp_path))
                     return
-            if os.name == 'nt' and exe_url:
+            else:
+                # Linux - szukamy pliku bez rozszerzenia
+                target_yt_dlp_path.parent.mkdir(parents=True, exist_ok=True)
+                for asset in assets:
+                    name = asset.get("name", "").lower()
+                    if ("yt-dlp" in name or "youtube-dlp" in name) and not name.endswith(('.exe', '.zip', '.tar.gz', '.tar.xz', '.deb', '.rpm')):
+                        if "linux" in name or (not any(x in name for x in ['win', 'macos', 'darwin', 'windows'])):
+                            linux_url = asset.get("browser_download_url")
+                            break
+                
+                if not linux_url:
+                    # Fallback - szukamy ogólnego pliku yt-dlp
+                    for asset in assets:
+                        name = asset.get("name", "")
+                        if name == "yt-dlp":
+                            linux_url = asset.get("browser_download_url")
+                            break
+            if (os.name == 'nt' and exe_url) or (os.name != 'nt' and linux_url):
+                download_url = exe_url if os.name == 'nt' else linux_url
                 current_version = ""
                 if target_yt_dlp_path.exists():
                     try:
@@ -376,21 +471,48 @@ class UpdateYTDLPThread(QThread):
                     self.finished_signal.emit(True, "Najnowsza wersja yt-dlp jest już zainstalowana.")
                     self.main_window.settings.setValue("ytdlp_path", str(target_yt_dlp_path))
                     return
-                self.progress_signal.emit(f"Pobieram yt-dlp {latest_version} z {exe_url} do {target_yt_dlp_path}...")
-                logger.info(f"Pobieram yt-dlp {latest_version} z {exe_url} do {target_yt_dlp_path}")
-                exe_response = requests.get(exe_url, timeout=60, stream=True)
+                self.progress_signal.emit(f"Pobieram yt-dlp {latest_version} z {download_url} do {target_yt_dlp_path}...")
+                logger.info(f"Pobieram yt-dlp {latest_version} z {download_url} do {target_yt_dlp_path}")
+                exe_response = requests.get(download_url, timeout=60, stream=True)
                 exe_response.raise_for_status()
                 temp_yt_dlp_path = target_yt_dlp_path.with_suffix(".tmp")
 
+                # Pobieranie z postępem
+                total_size = int(exe_response.headers.get('content-length', 0))
+                downloaded = 0
+                
                 with open(temp_yt_dlp_path, "wb") as f:
-                    shutil.copyfileobj(exe_response.raw, f)
+                    for chunk in exe_response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total_size > 0:
+                                percent = int((downloaded / total_size) * 100)
+                                self.progress_percent_signal.emit(percent)
+                                mb_downloaded = downloaded / (1024 * 1024)
+                                mb_total = total_size / (1024 * 1024)
+                                self.progress_detailed_signal.emit(
+                                    "yt-dlp", 
+                                    percent, 
+                                    f"{mb_downloaded:.1f} MB", 
+                                    f"{mb_total:.1f} MB"
+                                )
+                
+                # Ustawienie uprawnień wykonywalnych dla Linux
+                if os.name != 'nt':
+                    os.chmod(temp_yt_dlp_path, 0o755)
+                
                 os.replace(temp_yt_dlp_path, target_yt_dlp_path)
                 self.progress_signal.emit(f"Pobrano brakujący/zaktualizowany moduł yt-dlp {latest_version}.")
                 logger.info(f"Pobrano brakujący/zaktualizowany moduł yt-dlp {latest_version}.")
                 self.main_window.settings.setValue("ytdlp_path", str(target_yt_dlp_path))
                 self.finished_signal.emit(True, f"Pobrano brakujący/zaktualizowany moduł yt-dlp {latest_version}.")
 
-            elif os.name != 'nt':
+            elif os.name != 'nt' and not linux_url:
+                logger.info("Nie znaleziono pliku yt-dlp dla Linux. Sprawdzam lokalną instalację.")
+                self.finished_signal.emit(False, "Nie znaleziono pliku yt-dlp dla Linux w najnowszym wydaniu na GitHub.")
+                self.check_local_ytdlp(str(self.yt_dlp_path))
+            elif os.name == 'nt':
                 logger.info("System nie jest Windows, pomijam automatyczne pobieranie yt-dlp. Sprawdzam lokalną instalację.")
                 self.check_local_ytdlp(str(self.yt_dlp_path))
 
@@ -470,6 +592,8 @@ class UpdateYTDLPThread(QThread):
 class DownloadFFmpegThread(QThread):
     finished_signal = pyqtSignal(bool, str)
     progress_signal = pyqtSignal(str)
+    progress_percent_signal = pyqtSignal(int)  # Nowy sygnał dla procentów
+    progress_detailed_signal = pyqtSignal(str, int, str, str)  # Sygnał dla szczegółowych informacji: nazwa, procenty, pobrany MB, całkowity MB
 
     def __init__(self, ffmpeg_path, main_window: 'YTDLPGUI', parent=None):
         super().__init__(parent)
@@ -478,15 +602,9 @@ class DownloadFFmpegThread(QThread):
 
 
     def run(self):
-        auto_download_enabled = self.main_window.settings.value("auto_download_ffmpeg", os.name == 'nt', type=bool) and os.name == 'nt'
-        download_target_exe = FFMPEG_PATH_WINDOWS
+        auto_download_enabled = self.main_window.settings.value("auto_download_ffmpeg", True, type=bool)  # Zmienione - domyślnie True dla wszystkich systemów
+        download_target_exe = FFMPEG_PATH_WINDOWS if os.name == 'nt' else FFMPEG_PATH_LINUX
 
-        if os.name != 'nt':
-            message = "Automatyczne pobieranie FFmpeg nie jest obsługiwane na tym systemie operacyjnym. Proszę zainstalować FFmpeg ręcznie i upewnić się, że jest w ścieżce systemowej (PATH) lub ustawić ścieżkę w Ustawieniach."
-            logger.info("Pobieranie FFmpeg pominięte - system nie jest Windows.")
-            self.progress_signal.emit(message)
-            self.check_local_ffmpeg(str(self.ffmpeg_path_setting))
-            return
         try:
             self.progress_signal.emit("Sprawdzam obecność FFmpeg...")
 
@@ -504,69 +622,12 @@ class DownloadFFmpegThread(QThread):
                 self.check_local_ffmpeg(str(self.ffmpeg_path_setting))
                 return
 
-            self.progress_signal.emit(f"FFmpeg nie znaleziono w domyślnej lokalizacji auto-pobierania. Próbuję pobrać z {FFMPEG_DOWNLOAD_URL_WINDOWS}")
-            logger.info(f"FFmpeg nie znaleziono. Próbuję pobrać z {FFMPEG_DOWNLOAD_URL_WINDOWS}")
-            response = requests.get(FFMPEG_DOWNLOAD_URL_WINDOWS, stream=True, timeout=180)
-            response.raise_for_status()
-            temp_zip_path = LIBS_DIR / "ffmpeg.zip"
-            temp_zip_path.parent.mkdir(parents=True, exist_ok=True)
-
-            self.progress_signal.emit("Pobieram archiwum FFmpeg...")
-
-            with open(temp_zip_path, "wb") as f:
-                shutil.copyfileobj(response.raw, f)
-
-            self.progress_signal.emit("Pobieranie archiwum FFmpeg zakończone.")
-            logger.info("Pobieranie FFmpeg zakończone.")
-
-            self.progress_signal.emit(f"Rozpakowuję FFmpeg do {FFMPEG_BIN_DIR}...")
-            logger.info(f"Rozpakowuję FFmpeg z: {temp_zip_path} do {FFMPEG_BIN_DIR}")
-
-            FFMPEG_BIN_DIR.mkdir(parents=True, exist_ok=True)
-            files_to_extract = ["ffmpeg.exe", "ffplay.exe", "ffprobe.exe"]
-            extracted_tools = []
-
-            try:
-                with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
-                    for member_info in zip_ref.infolist():
-                        if member_info.is_dir():
-                            continue
-
-                        file_path_parts = member_info.filename.replace('\\', '/').split('/')
-                        file_name = file_path_parts[-1].lower()
-
-                        if 'bin' in file_path_parts and file_name in files_to_extract:
-                            logger.info(f"Znaleziono w archiwum: {member_info.filename}")
-                            target_path = FFMPEG_BIN_DIR / os.path.basename(member_info.filename)
-                            with zip_ref.open(member_info) as source_file, open(target_path, "wb") as target_file:
-                                shutil.copyfileobj(source_file, target_file)
-                            logger.info(f"Rozpakowano: {target_path}")
-                            extracted_tools.append(file_name)
-
-                if "ffmpeg.exe" not in extracted_tools:
-                    self.progress_signal.emit("Błąd: Nie znaleziono pliku ffmpeg.exe w pobranym archiwum.")
-                    logger.error(f"Nie znaleziono pliku ffmpeg.exe w archiwum: {temp_zip_path}")
-                    self.finished_signal.emit(False, "Nie znaleziono pliku ffmpeg.exe w archiwum zip FFmpeg.")
-                    return
-
-                self.progress_signal.emit("Rozpakowywanie zakończone.")
-                logger.info("FFmpeg i powiązane narzędzia rozpakowane pomyślnie.")
-                self.finished_signal.emit(True, "Pobrano i zainstalowano FFmpeg.")
-                self.main_window.settings.setValue("ffmpeg_path", str(download_target_exe))
-
-            except zipfile.BadZipFile:
-                logger.error(f"Pobrany plik FFmpeg jest uszkodzony ZIP: {temp_zip_path}", exc_info=True)
-                self.finished_signal.emit(False, "Pobrany plik FFmpeg jest uszkodzony.")
-                if str(self.ffmpeg_path_setting) != str(download_target_exe) and str(self.ffmpeg_path_setting) != 'ffmpeg':
-                    self.check_local_ffmpeg(str(self.ffmpeg_path_setting))
-                return
-
-            except Exception as e:
-                logger.error(f"Błąd podczas rozpakowywania FFmpeg: {e}", exc_info=True)
-                self.finished_signal.emit(False, f"Nieoczekiwany błąd rozpakowywania FFmpeg: {e}")
-                if str(self.ffmpeg_path_setting) != str(download_target_exe) and str(self.ffmpeg_path_setting) != 'ffmpeg':
-                    self.check_local_ffmpeg(str(self.ffmpeg_path_setting))
-                return
+            # Pobieranie FFmpeg dla Windows
+            if os.name == 'nt':
+                self._download_ffmpeg_windows(download_target_exe)
+            else:
+                # Pobieranie FFmpeg dla Linux
+                self._download_ffmpeg_linux(download_target_exe)
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Błąd sieciowy podczas pobierania FFmpeg: {e}", exc_info=True)
@@ -579,13 +640,168 @@ class DownloadFFmpegThread(QThread):
             logger.warning("Nieoczekiwany błąd podczas pobierania/rozpakowywania FFmpeg. Sprawdzam lokalną instalację.")
             self.check_local_ffmpeg(str(self.ffmpeg_path_setting))
         finally:
-            temp_zip_path = LIBS_DIR / "ffmpeg.zip"
-            if temp_zip_path.exists():
-                try:
-                    temp_zip_path.unlink()
-                    logger.info(f"Usunięto plik tymczasowy FFmpeg: {temp_zip_path}")
-                except Exception as e:
-                    logger.warning(f"Nie udało się usunąć pliku tymczasowego FFmpeg: {temp_zip_path}, {e}")
+            # Cleanup temp files
+            if os.name == 'nt':
+                temp_zip_path = LIBS_DIR / "ffmpeg.zip"
+                if temp_zip_path.exists():
+                    try:
+                        temp_zip_path.unlink()
+                        logger.info(f"Usunięto plik tymczasowy FFmpeg: {temp_zip_path}")
+                    except Exception as e:
+                        logger.warning(f"Nie udało się usunąć pliku tymczasowego FFmpeg: {temp_zip_path}, {e}")
+            else:
+                temp_tar_path = TOOLS_DIR / "ffmpeg.tar.xz"
+                if temp_tar_path.exists():
+                    try:
+                        temp_tar_path.unlink()
+                        logger.info(f"Usunięto plik tymczasowy FFmpeg: {temp_tar_path}")
+                    except Exception as e:
+                        logger.warning(f"Nie udało się usunąć pliku tymczasowego FFmpeg: {temp_tar_path}, {e}")
+
+    def _download_ffmpeg_windows(self, download_target_exe):
+        """Download and extract FFmpeg for Windows."""
+        self.progress_signal.emit(f"FFmpeg nie znaleziono w domyślnej lokalizacji auto-pobierania. Próbuję pobrać z {FFMPEG_DOWNLOAD_URL_WINDOWS}")
+        logger.info(f"FFmpeg nie znaleziono. Próbuję pobrać z {FFMPEG_DOWNLOAD_URL_WINDOWS}")
+        response = requests.get(FFMPEG_DOWNLOAD_URL_WINDOWS, stream=True, timeout=180)
+        response.raise_for_status()
+        temp_zip_path = LIBS_DIR / "ffmpeg.zip"
+        temp_zip_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Pobieranie z postępem
+        total_size = int(response.headers.get('content-length', 0))
+        downloaded = 0
+
+        self.progress_signal.emit("Pobieram archiwum FFmpeg...")
+
+        with open(temp_zip_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if total_size > 0:
+                        percent = int((downloaded / total_size) * 100)
+                        self.progress_percent_signal.emit(percent)
+                        mb_downloaded = downloaded / (1024 * 1024)
+                        mb_total = total_size / (1024 * 1024)
+                        self.progress_detailed_signal.emit(
+                            "FFmpeg", 
+                            percent, 
+                            f"{mb_downloaded:.1f} MB", 
+                            f"{mb_total:.1f} MB"
+                        )
+
+        self.progress_signal.emit("Pobieranie archiwum FFmpeg zakończone.")
+        logger.info("Pobieranie FFmpeg zakończone.")
+
+        self.progress_signal.emit(f"Rozpakowuję FFmpeg do {FFMPEG_BIN_DIR}...")
+        logger.info(f"Rozpakowuję FFmpeg z: {temp_zip_path} do {FFMPEG_BIN_DIR}")
+
+        FFMPEG_BIN_DIR.mkdir(parents=True, exist_ok=True)
+        files_to_extract = ["ffmpeg.exe", "ffplay.exe", "ffprobe.exe"]
+        extracted_tools = []
+
+        with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+            for member_info in zip_ref.infolist():
+                if member_info.is_dir():
+                    continue
+
+                file_path_parts = member_info.filename.replace('\\', '/').split('/')
+                file_name = file_path_parts[-1].lower()
+
+                if 'bin' in file_path_parts and file_name in files_to_extract:
+                    logger.info(f"Znaleziono w archiwum: {member_info.filename}")
+                    target_path = FFMPEG_BIN_DIR / os.path.basename(member_info.filename)
+                    with zip_ref.open(member_info) as source_file, open(target_path, "wb") as target_file:
+                        shutil.copyfileobj(source_file, target_file)
+                    logger.info(f"Rozpakowano: {target_path}")
+                    extracted_tools.append(file_name)
+
+        if "ffmpeg.exe" not in extracted_tools:
+            self.progress_signal.emit("Błąd: Nie znaleziono pliku ffmpeg.exe w pobranym archiwum.")
+            logger.error(f"Nie znaleziono pliku ffmpeg.exe w archiwum: {temp_zip_path}")
+            self.finished_signal.emit(False, "Nie znaleziono pliku ffmpeg.exe w archiwum zip FFmpeg.")
+            return
+
+        self.progress_signal.emit("Rozpakowywanie zakończone.")
+        logger.info("FFmpeg i powiązane narzędzia rozpakowane pomyślnie.")
+        self.finished_signal.emit(True, "Pobrano i zainstalowano FFmpeg.")
+        self.main_window.settings.setValue("ffmpeg_path", str(download_target_exe))
+
+    def _download_ffmpeg_linux(self, download_target_exe):
+        """Download and extract FFmpeg for Linux."""
+        import tarfile
+        
+        self.progress_signal.emit(f"FFmpeg nie znaleziono w domyślnej lokalizacji auto-pobierania. Próbuję pobrać z {FFMPEG_DOWNLOAD_URL_LINUX}")
+        logger.info(f"FFmpeg nie znaleziono. Próbuję pobrać z {FFMPEG_DOWNLOAD_URL_LINUX}")
+        response = requests.get(FFMPEG_DOWNLOAD_URL_LINUX, stream=True, timeout=300)
+        response.raise_for_status()
+        temp_tar_path = TOOLS_DIR / "ffmpeg.tar.xz"
+        temp_tar_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Pobieranie z postępem
+        total_size = int(response.headers.get('content-length', 0))
+        downloaded = 0
+
+        self.progress_signal.emit("Pobieram archiwum FFmpeg...")
+
+        with open(temp_tar_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if total_size > 0:
+                        percent = int((downloaded / total_size) * 100)
+                        self.progress_percent_signal.emit(percent)
+                        mb_downloaded = downloaded / (1024 * 1024)
+                        mb_total = total_size / (1024 * 1024)
+                        self.progress_detailed_signal.emit(
+                            "FFmpeg", 
+                            percent, 
+                            f"{mb_downloaded:.1f} MB", 
+                            f"{mb_total:.1f} MB"
+                        )
+
+        self.progress_signal.emit("Pobieranie archiwum FFmpeg zakończone.")
+        logger.info("Pobieranie FFmpeg zakończone.")
+
+        self.progress_signal.emit(f"Rozpakowuję FFmpeg do {TOOLS_DIR}...")
+        logger.info(f"Rozpakowuję FFmpeg z: {temp_tar_path} do {TOOLS_DIR}")
+
+        files_to_extract = ["ffmpeg", "ffplay", "ffprobe"]
+        extracted_tools = []
+
+        with tarfile.open(temp_tar_path, 'r:xz') as tar_ref:
+            for member in tar_ref.getmembers():
+                if member.isdir():
+                    continue
+
+                file_path_parts = member.name.split('/')
+                file_name = file_path_parts[-1]
+
+                if 'bin' in file_path_parts and file_name in files_to_extract:
+                    logger.info(f"Znaleziono w archiwum: {member.name}")
+                    target_path = TOOLS_DIR / file_name
+                    
+                    # Wyciągnij plik
+                    with tar_ref.extractfile(member) as source_file:
+                        with open(target_path, "wb") as target_file:
+                            shutil.copyfileobj(source_file, target_file)
+                    
+                    # Ustaw uprawnienia wykonywalne
+                    os.chmod(target_path, 0o755)
+                    logger.info(f"Rozpakowano: {target_path}")
+                    extracted_tools.append(file_name)
+
+        if "ffmpeg" not in extracted_tools:
+            self.progress_signal.emit("Błąd: Nie znaleziono pliku ffmpeg w pobranym archiwum.")
+            logger.error(f"Nie znaleziono pliku ffmpeg w archiwum: {temp_tar_path}")
+            self.finished_signal.emit(False, "Nie znaleziono pliku ffmpeg w archiwum tar.xz FFmpeg.")
+            return
+
+        self.progress_signal.emit("Rozpakowywanie zakończone.")
+        logger.info("FFmpeg i powiązane narzędzia rozpakowane pomyślnie.")
+        self.finished_signal.emit(True, "Pobrano i zainstalowano FFmpeg.")
+        self.main_window.settings.setValue("ffmpeg_path", str(download_target_exe))
 
 
     def check_local_ffmpeg(self, ffmpeg_path_setting_str):
@@ -671,8 +887,8 @@ class YTDLPGUI(QMainWindow):
         failed_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
         self.failed_logger.addHandler(failed_handler)
         self.failed_logger.setLevel(logging.INFO)
-        self.default_ytdlp_path_fallback = str(YTDLP_PATH_WINDOWS) if os.name == 'nt' else 'yt-dlp'
-        self.default_ffmpeg_path_local_fallback = str(FFMPEG_PATH_WINDOWS) if os.name == 'nt' else 'ffmpeg'
+        self.default_ytdlp_path_fallback = str(YTDLP_PATH_WINDOWS) if os.name == 'nt' else str(YTDLP_PATH_LINUX)
+        self.default_ffmpeg_path_local_fallback = str(FFMPEG_PATH_WINDOWS) if os.name == 'nt' else str(FFMPEG_PATH_LINUX)
 
         self.thread: Optional[YTDLPThread] = None
         self.update_ytdlp_thread: Optional[UpdateYTDLPThread] = None
@@ -680,7 +896,9 @@ class YTDLPGUI(QMainWindow):
         self.cda_check_thread: Optional[CDAStatusCheckThread] = None
 
         self.download_queue = []
+        self.failed_queue = []  # Lista nieudanych pobierań
         self.pending_queue_check = False
+        self.failed_dialog_shown = False  # Flaga zapobiegająca wielokrotnemu otwieraniu okienka
 
         self.init_ui()
         self.load_settings(initial=True)
@@ -1155,6 +1373,8 @@ class YTDLPGUI(QMainWindow):
         self.update_ytdlp_thread = UpdateYTDLPThread(current_ytdlp_path_to_check, self, parent=self)
         self.update_ytdlp_thread.finished_signal.connect(self.handle_ytdlp_update)
         self.update_ytdlp_thread.progress_signal.connect(self.update_progress)
+        self.update_ytdlp_thread.progress_percent_signal.connect(self.update_progress_percent)  # Nowy sygnał
+        self.update_ytdlp_thread.progress_detailed_signal.connect(self.update_detailed_progress)  # Nowy szczegółowy sygnał
         self.update_ytdlp_thread.start()
         self.pending_queue_check = True
         logger.info("Ustawiono pending_queue_check na True podczas sprawdzania yt-dlp")
@@ -1164,6 +1384,9 @@ class YTDLPGUI(QMainWindow):
         self.output_text.append(message)
         logger.info(f"Aktualizacja/Sprawdzenie yt-dlp zakończone: {success}, {message}")
         self.ytdlp_path_input.setText(self.get_ytdlp_path())
+        # Resetuj znacznik szczegółowego postępu
+        if hasattr(self.progress_bar, '_detailed_active'):
+            delattr(self.progress_bar, '_detailed_active')
         self.check_ffmpeg_present_or_download()
 
 
@@ -1174,6 +1397,8 @@ class YTDLPGUI(QMainWindow):
         self.download_ffmpeg_thread = DownloadFFmpegThread(current_ffmpeg_path_to_check, self, parent=self)
         self.download_ffmpeg_thread.finished_signal.connect(self.handle_ffmpeg_download)
         self.download_ffmpeg_thread.progress_signal.connect(self.update_progress)
+        self.download_ffmpeg_thread.progress_percent_signal.connect(self.update_progress_percent)  # Nowy sygnał
+        self.download_ffmpeg_thread.progress_detailed_signal.connect(self.update_detailed_progress)  # Nowy szczegółowy sygnał
         self.download_ffmpeg_thread.start()
 
 
@@ -1181,6 +1406,9 @@ class YTDLPGUI(QMainWindow):
         self.output_text.append(message)
         logger.info(f"Pobieranie/Sprawdzenie FFmpeg zakończone: {success}, {message}")
         self.ffmpeg_path.setText(self.get_ffmpeg_path())
+        # Resetuj znacznik szczegółowego postępu
+        if hasattr(self.progress_bar, '_detailed_active'):
+            delattr(self.progress_bar, '_detailed_active')
 
         self.dependency_checks_finished()
 
@@ -1190,6 +1418,10 @@ class YTDLPGUI(QMainWindow):
         self.setEnabled(True)
         self.output_text.append("Sprawdzanie zależności zakończone.")
         logger.info("Dependency checks finished. GUI enabled.")
+        
+        # Ustaw komunikat zakończenia na pasku postępu
+        self.progress_bar.setValue(100)
+        self.progress_bar.setFormat("Wszystkie zależności pobrane, gotowy!")
         if self.pending_queue_check:
             logger.info("Performing pending queue check.")
             self.ask_resume_queue()
@@ -1794,12 +2026,13 @@ class YTDLPGUI(QMainWindow):
         self.check_ytdlp_updates.setToolTip("Włącza automatyczne sprawdzanie i pobieranie najnowszej wersji yt-dlp z GitHub przy każdym uruchomieniu aplikacji.")
         ytdlp_layout.addRow(self.check_ytdlp_updates)
 
-        self.auto_download_ffmpeg = QCheckBox("Automatycznie pobieraj FFmpeg jeśli brak (tylko Windows)")
-        self.auto_download_ffmpeg.setToolTip(f"Włącza automatyczne pobieranie FFmpeg (wersja Essentials 64-bit) do domyślnej lokalizacji ({FFMPEG_BIN_DIR}) jeśli nie zostanie znaleziony. Działa tylko w systemie Windows.")
-        self.auto_download_ffmpeg.setChecked(os.name == 'nt')
-        self.auto_download_ffmpeg.setEnabled(os.name == 'nt')
-        if os.name != 'nt':
-            self.auto_download_ffmpeg.setToolTip("Automatyczne pobieranie FFmpeg jest obecnie obsługiwane tylko na Windows.")
+        self.auto_download_ffmpeg = QCheckBox("Automatycznie pobieraj FFmpeg jeśli brak")
+        if os.name == 'nt':
+            tooltip_text = f"Włącza automatyczne pobieranie FFmpeg (wersja Essentials 64-bit) do domyślnej lokalizacji ({FFMPEG_BIN_DIR}) jeśli nie zostanie znaleziony."
+        else:
+            tooltip_text = f"Włącza automatyczne pobieranie FFmpeg (static Linux build) do domyślnej lokalizacji ({TOOLS_DIR}) jeśli nie zostanie znaleziony."
+        self.auto_download_ffmpeg.setToolTip(tooltip_text)
+        self.auto_download_ffmpeg.setChecked(True)  # Domyślnie włączone dla wszystkich systemów
         ytdlp_layout.addRow(self.auto_download_ffmpeg)
 
         ytdlp_group.setLayout(ytdlp_layout)
@@ -1911,6 +2144,28 @@ class YTDLPGUI(QMainWindow):
         self.settings.setValue("theme", theme_name)
         self.apply_style()
         logger.info(f"Zmieniono motyw na: {theme_name}")
+
+    def is_dark_theme(self):
+        """Sprawdza czy aktualny motyw to ciemny."""
+        theme = self.settings.value("theme", "Dark", type=str)
+        return theme == "Dark"
+
+    def set_failed_item_colors(self, item):
+        """Ustawia kolory dla nieudanych pobierań dostosowane do motywu."""
+        if self.is_dark_theme():
+            item.setBackground(QColor(120, 50, 50))  # Ciemne czerwone tło
+            item.setForeground(QColor(255, 200, 200))  # Jasny czerwonawy tekst
+        else:
+            item.setBackground(QColor(255, 200, 200))  # Jasne czerwone tło
+            item.setForeground(QColor(150, 0, 0))  # Ciemny czerwony tekst
+
+    def is_failed_item(self, item):
+        """Sprawdza czy element ma kolory nieudanego pobierania."""
+        bg_color = item.background().color()
+        # Sprawdź oba możliwe kolory tła
+        return (bg_color == QColor(120, 50, 50) or 
+                bg_color == QColor(255, 200, 200) or 
+                bg_color == QColor(200, 100, 100))  # Stary kolor dla kompatybilności
 
 
     def toggle_password_visibility(self, checked):
@@ -2138,12 +2393,38 @@ class YTDLPGUI(QMainWindow):
             box.exec()
             return
 
-        # Zabezpieczenie przed duplikatami
+        # Zabezpieczenie przed duplikatami - sprawdź wszystkie listy
         urls_in_queue = [item.text().strip() for i in range(self.queue_list.count()) if (item := self.queue_list.item(i)) is not None]
-        if url in urls_in_queue:
-            QMessageBox.information(self, "Duplikat URL", f"URL już znajduje się w kolejce: {url}")
-            logger.info(f"Próba dodania duplikatu URL do kolejki: {url}")
-            return
+        all_existing_urls = set(self.download_queue + self.failed_queue + urls_in_queue)
+        
+        if url in all_existing_urls:
+            if url in self.failed_queue:
+                # URL jest w failed_queue - zaproponuj przeniesienie
+                reply = QMessageBox.question(self, "URL w nieudanych", 
+                                           f"URL już znajduje się w nieudanych pobieraniach.\n"
+                                           f"Czy chcesz przenieść go z powrotem do kolejki?\n\n{url}",
+                                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if reply == QMessageBox.StandardButton.Yes:
+                    # Usuń z failed_queue i dodaj do normalnej kolejki
+                    self.failed_queue.remove(url)
+                    # Znajdź element w GUI i przywróć normalny wygląd
+                    for i in range(self.queue_list.count()):
+                        item = self.queue_list.item(i)
+                        if item and item.text().strip() == url:
+                            item.setBackground(QColor())  # Przywróć domyślne tło
+                            item.setForeground(QColor())  # Przywróć domyślny kolor tekstu
+                            break
+                    # Dodaj do download_queue jeśli nie ma tam
+                    if url not in self.download_queue:
+                        self.download_queue.append(url)
+                    self.save_queue()
+                    self.url_input.clear()
+                    logger.info(f"Przeniesiono URL z failed_queue do download_queue: {url}")
+                return
+            else:
+                QMessageBox.information(self, "Duplikat URL", f"URL już znajduje się w kolejce: {url}")
+                logger.info(f"Próba dodania duplikatu URL do kolejki: {url}")
+                return
 
         # Walidacja i automatyczne poprawianie URL
         import re
@@ -2266,7 +2547,9 @@ class YTDLPGUI(QMainWindow):
         if box.clickedButton() == yes_btn:
             self.queue_list.clear()
             self.download_queue.clear()
-            logger.info("Wyczyszczono kolejkę")
+            self.failed_queue.clear()  # Wyczyść także nieudane pobierania
+            self.failed_dialog_shown = False  # Reset flagi
+            logger.info("Wyczyszczono kolejkę i nieudane pobierania")
             self.save_queue()
 
     def save_queue(self):
@@ -2274,9 +2557,14 @@ class YTDLPGUI(QMainWindow):
         queue_file = self.appdata_dir / "queue.json"
         try:
             queue_file.parent.mkdir(parents=True, exist_ok=True)
+            # Zapisuj kolejkę razem z informacją o nieudanych pobieraniach
+            queue_data = {
+                "download_queue": self.download_queue,
+                "failed_queue": self.failed_queue
+            }
             with open(queue_file, "w", encoding="utf-8") as f:
-                json.dump(self.download_queue, f, indent=2)
-            logger.debug(f"Zapisano kolejkę ({len(self.download_queue)} elementów) do {queue_file}")
+                json.dump(queue_data, f, indent=2)
+            logger.debug(f"Zapisano kolejkę ({len(self.download_queue)} elementów, {len(self.failed_queue)} nieudanych) do {queue_file}")
         except Exception as e:
             logger.error(f"Błąd zapisu kolejki do {queue_file}: {e}", exc_info=True)
 
@@ -2292,23 +2580,45 @@ class YTDLPGUI(QMainWindow):
             with open(queue_file, "r", encoding="utf-8") as f:
                 content = f.read().strip()
                 if not content:
-                    loaded_queue = []
+                    loaded_data = []
                 else:
-                    loaded_queue = json.loads(content)
+                    loaded_data = json.loads(content)
 
-            if isinstance(loaded_queue, list):
-                self.download_queue = [url.strip() for url in loaded_queue if url and url.strip()]
-                self.queue_list.clear()
-                for url in self.download_queue:
-                    self.queue_list.addItem(url)
-                logger.info(f"Wczytałem kolejkę ({len(self.download_queue)} elementów).")
-                return True
+            # Sprawdź czy to nowy format (dict) czy stary (list)
+            if isinstance(loaded_data, dict):
+                # Nowy format z failed_queue
+                self.download_queue = [url.strip() for url in loaded_data.get("download_queue", []) if url and url.strip()]
+                self.failed_queue = [url.strip() for url in loaded_data.get("failed_queue", []) if url and url.strip()]
+                logger.info(f"Wczytałem kolejkę (nowy format): {len(self.download_queue)} elementów, {len(self.failed_queue)} nieudanych")
+            elif isinstance(loaded_data, list):
+                # Stary format - tylko lista URL
+                self.download_queue = [url.strip() for url in loaded_data if url and url.strip()]
+                self.failed_queue = []
+                logger.info(f"Wczytałem kolejkę (stary format): {len(self.download_queue)} elementów")
             else:
-                logger.info(f"Plik kolejki '{queue_file.name}' ma nieprawidłowy format (nie jest listą).")
-                QMessageBox.warning(self, "Błąd wczytywania", f"Plik kolejki '{queue_file.name}' ma nieprawidłowy format.")
+                logger.warning(f"Plik kolejki ma nieprawidłowy format: {type(loaded_data)}")
                 self.download_queue = []
-                self.queue_list.clear()
+                self.failed_queue = []
                 return False
+
+            # Odtwórz widok kolejki - pokaż zarówno download_queue jak i failed_queue
+            self.queue_list.clear()
+            all_urls = list(self.download_queue)  # Kopia download_queue
+            
+            # Dodaj failed_queue do wyświetlenia, ale nie do download_queue
+            for url in self.failed_queue:
+                if url not in all_urls:
+                    all_urls.append(url)
+            
+            for url in all_urls:
+                item = QListWidgetItem(url)
+                if url in self.failed_queue:
+                    # Oznacz nieudane pobierania - kolory dostosowane do motywu
+                    self.set_failed_item_colors(item)
+                self.queue_list.addItem(item)
+            
+            logger.info(f"Wczytano kolejkę: {len(self.download_queue)} normalnych, {len(self.failed_queue)} nieudanych")
+            return True
 
         except json.JSONDecodeError:
             logger.error(f"Błąd dekodowania JSON pliku kolejki: {queue_file}", exc_info=True)
@@ -2326,8 +2636,13 @@ class YTDLPGUI(QMainWindow):
         logger.info("Uruchamiam ask_resume_queue")
         self.load_queue()
 
-        if self.download_queue:
-            box = QMessageBox(QMessageBox.Icon.Question, "Kontynuuj kolejkę", f"Wykryto zapisaną kolejkę ({len(self.download_queue)} elementów).\nCzy chcesz kontynuować pobieranie?", parent=self)
+        # Sprawdź czy są jakiekolwiek elementy (normalne lub nieudane)
+        total_items = len(self.download_queue) + len(self.failed_queue)
+        if total_items > 0:
+            failed_info = f" ({len(self.failed_queue)} nieudanych)" if self.failed_queue else ""
+            box = QMessageBox(QMessageBox.Icon.Question, "Kontynuuj kolejkę", 
+                             f"Wykryto zapisaną kolejkę ({len(self.download_queue)} normalnych{failed_info}).\n"
+                             f"Czy chcesz kontynuować pobieranie?", parent=self)
             yes_btn = box.addButton("Tak", QMessageBox.ButtonRole.YesRole)
             no_btn = box.addButton("Nie", QMessageBox.ButtonRole.NoRole)
             box.setDefaultButton(yes_btn)
@@ -2335,7 +2650,13 @@ class YTDLPGUI(QMainWindow):
             if box.clickedButton() == yes_btn:
                 logger.info("Użytkownik wybrał kontynuację kolejki")
                 self.tabs.setCurrentWidget(self.queue_tab_widget)
-                self.start_download(add_current_url=False)
+                
+                # Jeśli są normalne elementy, uruchom je
+                if self.download_queue:
+                    self.start_download(add_current_url=False)
+                # Jeśli są tylko nieudane, uruchom je
+                elif self.failed_queue:
+                    self.start_download(add_current_url=False)
             else:
                 self.clear_queue()
                 logger.info("Użytkownik odrzucił kontynuację kolejki")
@@ -2415,8 +2736,7 @@ class YTDLPGUI(QMainWindow):
         """
         logger.info("Wczytuję ustawienia...")
         self.check_ytdlp_updates.setChecked(self.settings.value("check_ytdlp_updates", True, type=bool))
-        self.auto_download_ffmpeg.setChecked(self.settings.value("auto_download_ffmpeg", os.name == 'nt', type=bool))
-        if os.name != 'nt': self.auto_download_ffmpeg.setEnabled(False)
+        self.auto_download_ffmpeg.setChecked(self.settings.value("auto_download_ffmpeg", True, type=bool))  # Domyślnie True dla wszystkich systemów
         saved_default_output_path = self.settings.value("default_output_path", "", type=str).strip()
         if not saved_default_output_path:
             user_downloads = self.get_user_downloads_path()
@@ -2568,30 +2888,47 @@ class YTDLPGUI(QMainWindow):
 
     def update_progress_percent(self, percent):
         percent = max(0, min(100, percent))
-        pass
-
-
-    def update_detailed_progress(self, percent, total_size_str, speed_str, raw_status_line):
-        """Updates the progress bar with detailed info."""
-        percent = max(0, min(100, percent))
         self.progress_bar.setValue(percent)
+        # Resetuj format do standardowego, jeśli nie ma szczegółowych informacji
+        if not hasattr(self.progress_bar, '_detailed_active'):
+            self.progress_bar.setFormat("%p%")
 
-        status_text = ""
-        # Próbuj wyciągnąć ETA lub podobny status
-        eta_match = re.search(r"ETA\s+([\d:]+)", raw_status_line)
-        if eta_match:
-            status_text = f"ETA {eta_match.group(1)}"
 
-        progress_text_parts = [f"{percent}%"]
-        if total_size_str != "N/A":
-            progress_text_parts.append(f"{total_size_str}")
-        if speed_str != "N/A":
-            progress_text_parts.append(f"{speed_str}")
-        if status_text:
-            progress_text_parts.append(status_text)
-
-        formatted_display = " | ".join(progress_text_parts)
-        self.progress_bar.setFormat(formatted_display)
+    def update_detailed_progress(self, component_name, percent, downloaded_mb, total_mb):
+        """Updates the progress bar with detailed download info."""
+        try:
+            # Bezpieczna konwersja percent na liczby
+            if isinstance(percent, str):
+                # Usuń znaki % i inne znaki, zostaw tylko cyfry i kropkę
+                percent_clean = ''.join(c for c in str(percent) if c.isdigit() or c == '.')
+                if percent_clean:
+                    percent = float(percent_clean)
+                else:
+                    percent = 0
+            elif percent is None:
+                percent = 0
+            else:
+                percent = float(percent)
+            
+            # Zabezpieczenie przed nieprawidłowymi wartościami
+            percent = max(0, min(100, percent))
+            self.progress_bar.setValue(int(percent))
+            
+            # Oznacz że trwa szczegółowy postęp
+            self.progress_bar._detailed_active = True
+            
+            # Aktualizuj tekst paska postępu z szczegółowymi informacjami
+            if downloaded_mb != "N/A" and total_mb != "N/A":
+                progress_text = f"{component_name} | {downloaded_mb} / {total_mb} | {int(percent)}%"
+            else:
+                progress_text = f"{component_name} | {int(percent)}%"
+            self.progress_bar.setFormat(progress_text)
+            
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Błąd konwersji postępu: {e}, percent={percent}")
+            # Fallback - ustaw domyślne wartości
+            self.progress_bar.setValue(0)
+            self.progress_bar.setFormat(f"Pobieranie {component_name}...")
 
 
     def download_finished(self, success):
@@ -2599,20 +2936,35 @@ class YTDLPGUI(QMainWindow):
         self.progress_bar.setFormat("%p%")
         current_processing_url = getattr(self, "current_processing_url", None)
 
-        # Usuń z kolejki, jeśli tam był
+        # Obsługa kolejki z nieudanymi pobieraniami
         if self.download_queue and current_processing_url:
             if current_processing_url == self.download_queue[0]:
                 finished_url = self.download_queue.pop(0)
                 items = self.queue_list.findItems(finished_url, Qt.MatchFlag.MatchExactly)
                 if items:
                     row = self.queue_list.row(items[0])
-                    self.queue_list.takeItem(row)
-                    logger.info(f"Usunięto zakończony element z kolejki (indeks {row}): {finished_url}")
+                    item = self.queue_list.takeItem(row)
+                    
+                    if not success:
+                        # Dodaj do listy nieudanych (tylko jeśli nie ma tam już)
+                        if finished_url not in self.failed_queue:
+                            self.failed_queue.append(finished_url)
+                        # Dodaj z powrotem do kolejki, ale oznacz na czerwono
+                        self.queue_list.insertItem(row, item)
+                        self.set_failed_item_colors(item)
+                        logger.info(f"Oznaczono nieudane pobieranie na czerwono: {finished_url}")
+                    else:
+                        logger.info(f"Usunięto zakończony pomyślnie element z kolejki (indeks {row}): {finished_url}")
                 else:
-                    # Spróbuj usunąć pierwszy element, jeśli dokładne dopasowanie zawiedzie (np. z powodu normalizacji)
+                    # Spróbuj usunąć pierwszy element, jeśli dokładne dopasowanie zawiedzie
                     if self.queue_list.count() > 0:
-                        self.queue_list.takeItem(0)
-                        logger.warning(f"Nie znaleziono zakończonego URL '{finished_url}' w kolejce GUI, usunięto pierwszy element.")
+                        item = self.queue_list.takeItem(0)
+                        if not success:
+                            if finished_url not in self.failed_queue:
+                                self.failed_queue.append(finished_url)
+                            self.queue_list.insertItem(0, item)
+                            self.set_failed_item_colors(item)
+                        logger.warning(f"Nie znaleziono zakończonego URL '{finished_url}' w kolejce GUI, obsłużono pierwszy element.")
                 self.save_queue()
                 self.url_input.clear()
             else:
@@ -2624,24 +2976,178 @@ class YTDLPGUI(QMainWindow):
             self.progress_bar.setFormat("100% | Zakończono")
             logger.info("Pobieranie zakończone pomyślnie")
         else:
-            self.output_text.append(f"\n--- BŁĄD ---\nPobieranie nie powiodło się dla: {current_processing_url}\nTytuł: {self.current_video_title}\nSprawdź logi w konsoli lub plik {self.failed_log_file.name} po szczegóły.\n---")
+            self.output_text.append(f"\n--- BŁĄD ---\nPobieranie nie powiodło się dla: {current_processing_url}\nTytuł: {self.current_video_title}\nURL oznaczony na czerwono w kolejce.\nSprawdź logi w konsoli lub plik {self.failed_log_file.name} po szczegóły.\n---")
             logger.error(f"Pobieranie nie powiodło się dla: {current_processing_url}")
             self.failed_logger.info(f"FAILED_URL: {current_processing_url} | TITLE: {self.current_video_title}")
 
         self.current_video_title = "Unknown"
         self.current_processing_url = None
 
-        if self.download_queue:
-            self.output_text.append(f"\nPozostało {len(self.download_queue)} elementów w kolejce. Rozpoczynam następny...")
-            logger.info(f"Kontynuuję kolejkę, {len(self.download_queue)} elementów pozostało.")
-            self.start_next_in_queue()
+        # Sprawdź czy są jeszcze elementy do pobrania (nie czerwone)
+        remaining_items = [self.download_queue[i] for i in range(len(self.download_queue))
+                          if self.download_queue[i] not in self.failed_queue]
+        
+        if remaining_items:
+            # Znajdź następny element, który nie jest na liście nieudanych
+            next_url = None
+            for url in self.download_queue:
+                if url not in self.failed_queue:
+                    next_url = url
+                    break
+            
+            if next_url:
+                self.output_text.append(f"\nPozostało {len(remaining_items)} elementów w kolejce. Rozpoczynam następny...")
+                logger.info(f"Kontynuuję kolejkę, {len(remaining_items)} elementów pozostało.")
+                self.start_next_in_queue()
+            else:
+                self._handle_queue_completion()
         else:
+            # Wszystkie elementy w kolejce są nieudane lub kolejka jest pusta
+            self._handle_queue_completion()
+
+    def _handle_queue_completion(self):
+        """Obsługuje zakończenie kolejki i pyta o nieudane pobierania."""
+        if self.failed_queue and not self.failed_dialog_shown:
+            self.output_text.append(f"\nKolejka zakończona. {len(self.failed_queue)} nieudanych pobierań.")
+            logger.info(f"Kolejka zakończona z {len(self.failed_queue)} nieudanymi pobieraniami.")
+            self.failed_dialog_shown = True  # Ustaw flagę przed pokazaniem okienka
+            self._show_failed_downloads_dialog()
+        elif not self.failed_queue:
             self.output_text.append("\nKolejka jest pusta. Pobieranie zakończone.")
             logger.info("Kolejka pusta, pobieranie zakończone.")
             self.download_btn.setEnabled(True)
 
+    def _show_failed_downloads_dialog(self):
+        """Pokazuje dialog z opcjami obsługi nieudanych pobierań."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QListWidget
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Nieudane pobierania")
+        dialog.setModal(True)
+        dialog.resize(500, 300)
+        
+        layout = QVBoxLayout()
+        
+        # Informacja
+        info_label = QLabel(f"Znaleziono {len(self.failed_queue)} nieudanych pobierań:")
+        layout.addWidget(info_label)
+        
+        # Lista nieudanych URL-i
+        failed_list = QListWidget()
+        for url in self.failed_queue:
+            failed_list.addItem(url)
+        layout.addWidget(failed_list)
+        
+        # Przyciski
+        button_layout = QHBoxLayout()
+        
+        retry_btn = QPushButton("Ponów próbę nieudanych")
+        retry_btn.clicked.connect(lambda: self._retry_failed_downloads(dialog))
+        button_layout.addWidget(retry_btn)
+        
+        clear_btn = QPushButton("Wyczyść kolejkę")
+        clear_btn.clicked.connect(lambda: self._clear_failed_downloads(dialog))
+        button_layout.addWidget(clear_btn)
+        
+        cancel_btn = QPushButton("Anuluj (nic nie rób)")
+        cancel_btn.clicked.connect(lambda: self._close_dialog_and_enable_button(dialog))
+        button_layout.addWidget(cancel_btn)
+        
+        layout.addLayout(button_layout)
+        dialog.setLayout(layout)
+        
+        dialog.exec()
+
+    def _close_dialog_and_enable_button(self, dialog):
+        """Zamyka dialog i włącza przycisk pobierania."""
+        self.failed_dialog_shown = False  # Reset flagi
+        dialog.close()
+        self.download_btn.setEnabled(True)
+    
+    def _fetch_video_title(self, url):
+        """Pobiera tytuł filmu przed głównym pobieraniem."""
+        try:
+            ytdlp_path = self.get_ytdlp_path()
+            command = [ytdlp_path, "--get-title", "--simulate", url]
+            
+            # Specjalne traktowanie CDA - NIE dodawaj logowania dla niepremiowych filmów
+            if url and "cda.pl" in url and "/vfilm" in url:
+                cda_email = self.cda_email.text().strip()
+                cda_pass = self.cda_password.text()
+                if cda_email and cda_pass:
+                    command.extend(["--username", cda_email, "--password", cda_pass])
+            
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='ignore',
+                timeout=15,
+                creationflags=creationflags
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                title = result.stdout.strip()
+                self.current_video_title = title
+                logger.info(f"Pobrany tytuł filmu: {title}")
+                return title
+            else:
+                logger.warning(f"Nie udało się pobrać tytułu: returncode={result.returncode}, stderr={result.stderr}")
+                
+        except subprocess.TimeoutExpired:
+            logger.warning("Timeout podczas pobierania tytułu filmu")
+        except Exception as e:
+            logger.error(f"Błąd podczas pobierania tytułu filmu: {e}")
+        
+        # Fallback - zostaw "Unknown"
+        return "Unknown"
+
+    def _retry_failed_downloads(self, dialog):
+        """Ponawia nieudane pobierania."""
+        # Usuń czerwone oznaczenia i wyczyść listę nieudanych
+        for i in range(self.queue_list.count()):
+            item = self.queue_list.item(i)
+            if item and self.is_failed_item(item):
+                item.setBackground(QColor())  # Usuń czerwone tło
+                item.setForeground(QColor())  # Usuń biały tekst
+        
+        self.failed_queue.clear()
+        self.output_text.append(f"\nPonawiam próbę nieudanych pobierań...")
+        logger.info("Ponawiam próbę nieudanych pobierań.")
+        self.failed_dialog_shown = False  # Reset flagi
+        dialog.close()
+        self.start_next_in_queue()
+
+    def _clear_failed_downloads(self, dialog):
+        """Czyści kolejkę z nieudanych pobierań."""
+        # Usuń czerwone elementy z kolejki
+        items_to_remove = []
+        for i in range(self.queue_list.count()):
+            item = self.queue_list.item(i)
+            if item and self.is_failed_item(item):
+                items_to_remove.append((i, item.text()))
+        
+        # Usuń od tyłu, żeby indeksy się nie zmieniły
+        for i, url in reversed(items_to_remove):
+            self.queue_list.takeItem(i)
+            if url in self.download_queue:
+                self.download_queue.remove(url)
+        
+        self.failed_queue.clear()
+        self.save_queue()
+        self.output_text.append(f"\nUsunięto {len(items_to_remove)} nieudanych pobierań z kolejki.")
+        logger.info(f"Usunięto {len(items_to_remove)} nieudanych pobierań z kolejki.")
+        self.failed_dialog_shown = False  # Reset flagi
+        dialog.close()
+        self.download_btn.setEnabled(True)
+
 
     def start_download(self, add_current_url=True):
+        # Reset flagi okienka przy rozpoczęciu nowego pobierania
+        self.failed_dialog_shown = False
+        
         if self.thread and self.thread.isRunning():
             QMessageBox.warning(self, "Pobieranie w toku", "Poczekaj na zakończenie obecnego pobierania.")
             return
@@ -2653,9 +3159,38 @@ class YTDLPGUI(QMainWindow):
             self.url_input.clear()
             self.save_queue()
             logger.info(f"Dodano do kolejki i rozpoczęto pobieranie: {current_url}")
-        elif not self.download_queue:
+        elif not self.download_queue and not self.failed_queue:
             QMessageBox.warning(self, "Brak URL", "Wprowadź URL lub dodaj coś do kolejki.")
             return
+
+        # Sprawdź czy są nieudane pobierania do ponownej próby
+        if self.failed_queue and len(self.download_queue) == 0:
+            # W kolejce są tylko nieudane pobierania - pytaj czy ponowić
+            reply = QMessageBox.question(self, "Ponów pobierania", 
+                                       f"W kolejce są tylko nieudane pobierania ({len(self.failed_queue)} elementów).\n"
+                                       "Czy chcesz spróbować pobrać je ponownie?",
+                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                # Przenieś nieudane z powrotem do download_queue
+                for url in self.failed_queue:
+                    if url not in self.download_queue:
+                        self.download_queue.append(url)
+                
+                # Usuń z failed_queue i przywróć normalny wygląd
+                for i in range(self.queue_list.count()):
+                    item = self.queue_list.item(i)
+                    if item and item.text() in self.failed_queue:
+                        item.setBackground(QColor())  # Przywróć domyślne tło
+                        item.setForeground(QColor())  # Przywróć domyślny kolor tekstu
+                
+                self.failed_queue.clear()
+                self.save_queue()
+                self.output_text.append(f"\nPrzeniesiono {len(self.download_queue)} nieudanych pobierań z powrotem do kolejki.")
+                logger.info(f"Przywrócono {len(self.download_queue)} nieudanych pobierań.")
+            else:
+                self.download_btn.setEnabled(True)
+                return
 
         self.start_next_in_queue()
 
@@ -2665,13 +3200,28 @@ class YTDLPGUI(QMainWindow):
             self.download_btn.setEnabled(True)
             return
 
-        url = self.download_queue[0]
-        self.current_processing_url = url
-        self.output_text.append(f"\n--- ROZPOCZYNAM POBIERANIE DLA: {url} ---")
+        # Znajdź następny URL, który nie jest na liście nieudanych
+        next_url = None
+        for url in self.download_queue:
+            if url not in self.failed_queue:
+                next_url = url
+                break
+        
+        if not next_url:
+            logger.info("Wszystkie pozostałe elementy w kolejce to nieudane pobierania.")
+            # Nie wywołuj _handle_queue_completion tutaj - zostanie wywołane w download_finished
+            self.download_btn.setEnabled(True)
+            return
+
+        self.current_processing_url = next_url
+        self.output_text.append(f"\n--- ROZPOCZYNAM POBIERANIE DLA: {next_url} ---")
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("0%")
 
-        command = self.build_command(url)
+        # Najpierw pobierz tytuł filmu
+        self._fetch_video_title(next_url)
+
+        command = self.build_command(next_url)
         if not command:
             self.download_finished(False) # Treat as failure for this item
             return
@@ -2691,6 +3241,9 @@ class YTDLPGUI(QMainWindow):
             self.thread.stop()
             self.output_text.append("\nZatrzymuję pobieranie...")
             logger.info("Zażądano zatrzymania pobierania.")
+            # Włącz przycisk pobierania z powrotem po zatrzymaniu
+            self.download_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
         else:
             logger.warning("Próba zatrzymania, ale żaden wątek pobierania nie działa.")
 
@@ -2807,16 +3360,37 @@ class YTDLPGUI(QMainWindow):
         if self.force_ipv4.isChecked(): command.append("--force-ipv4")
         if self.force_ipv6.isChecked(): command.append("--force-ipv6")
 
-        # Logowanie
+        # Logowanie CDA
         cda_email = self.cda_email.text().strip()
         cda_pass = self.cda_password.text()
         username = self.username.text().strip()
         password = self.password.text()
 
-        if cda_email and cda_pass:
-            command.extend(["--username", cda_email, "--password", cda_pass])
-        elif username and password:
-            command.extend(["--username", username, "--password", password])
+        # Specjalne traktowanie CDA - sprawdź czy URL wymaga logowania
+        if url and "cda.pl" in url:
+            # Filmy premium mają /vfilm na końcu i zawsze wymagają logowania
+            if "/vfilm" in url:
+                if cda_email and cda_pass:
+                    command.extend(["--username", cda_email, "--password", cda_pass])
+                    logger.info("Dodano dane logowania CDA dla filmu premium (/vfilm)")
+                else:
+                    msg = "Film premium CDA wymaga danych logowania. Wprowadź email i hasło CDA."
+                    self.output_text.append(f"BŁĄD: {msg}")
+                    logger.error(msg)
+                    QMessageBox.warning(self, "Brak danych CDA", msg)
+                    return None
+            else:
+                # Zwykłe filmy CDA - NIE dodawaj logowania automatycznie
+                # CDA zwykle pozwala na pobieranie publicznych filmów bez logowania
+                # Logowanie może powodować błędy 403 dla niektórych filmów
+                logger.info("Film CDA bez /vfilm - pobieranie bez logowania")
+                pass  # Nie dodawaj żadnych danych logowania
+        else:
+            # Dla innych platform używaj standardowego logowania
+            if cda_email and cda_pass:
+                command.extend(["--username", cda_email, "--password", cda_pass])
+            elif username and password:
+                command.extend(["--username", username, "--password", password])
         if twofactor := self.twofactor.text().strip(): command.extend(["--twofactor", twofactor])
         if video_pass := self.video_password.text(): command.extend(["--video-password", video_pass])
 
@@ -2837,16 +3411,35 @@ class YTDLPGUI(QMainWindow):
         logger.info("Aplikacja jest zamykana, zapisuję ustawienia.")
         self.save_settings()
         self.save_queue()
-        # Ensure threads are stopped
+        
+        # Ensure threads are stopped with timeout to prevent hanging
+        timeout_ms = 3000  # 3 seconds timeout
+        
         if self.thread and self.thread.isRunning():
+            logger.info("Zatrzymuję główny wątek pobierania...")
             self.thread.stop()
-            self.thread.wait()
+            if not self.thread.wait(timeout_ms):
+                logger.warning("Główny wątek nie zakończył się w czasie, wymuszam zakończenie")
+                self.thread.terminate()
+                self.thread.wait(1000)  # Wait 1 more second after terminate
+                
         if self.update_ytdlp_thread and self.update_ytdlp_thread.isRunning():
+            logger.info("Zatrzymuję wątek aktualizacji yt-dlp...")
             self.update_ytdlp_thread.quit()
-            self.update_ytdlp_thread.wait()
+            if not self.update_ytdlp_thread.wait(timeout_ms):
+                logger.warning("Wątek aktualizacji yt-dlp nie zakończył się w czasie, wymuszam zakończenie")
+                self.update_ytdlp_thread.terminate()
+                self.update_ytdlp_thread.wait(1000)
+                
         if self.download_ffmpeg_thread and self.download_ffmpeg_thread.isRunning():
+            logger.info("Zatrzymuję wątek pobierania ffmpeg...")
             self.download_ffmpeg_thread.quit()
-            self.download_ffmpeg_thread.wait()
+            if not self.download_ffmpeg_thread.wait(timeout_ms):
+                logger.warning("Wątek pobierania ffmpeg nie zakończył się w czasie, wymuszam zakończenie")
+                self.download_ffmpeg_thread.terminate()
+                self.download_ffmpeg_thread.wait(1000)
+        
+        logger.info("Wszystkie wątki zostały zatrzymane, zamykam aplikację")
         event.accept()
 
 if __name__ == '__main__':
