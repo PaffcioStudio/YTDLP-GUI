@@ -50,11 +50,16 @@ build_deb() {
     mkdir -p deb_build/ytdlp-gui_1.0.1_amd64/usr/bin
     mkdir -p deb_build/ytdlp-gui_1.0.1_amd64/usr/share/applications
     mkdir -p deb_build/ytdlp-gui_1.0.1_amd64/usr/share/pixmaps
+    mkdir -p deb_build/ytdlp-gui_1.0.1_amd64/usr/share/icons/hicolor/256x256/apps
     
     # Kopiowanie plików
     cp dist/YTDLP-GUI deb_build/ytdlp-gui_1.0.1_amd64/usr/bin/ytdlp-gui
     chmod +x deb_build/ytdlp-gui_1.0.1_amd64/usr/bin/ytdlp-gui
-    cp icon.ico deb_build/ytdlp-gui_1.0.1_amd64/usr/share/pixmaps/ytdlp-gui.ico
+    
+    # Konwersja ikony ICO na PNG i kopiowanie do odpowiednich lokalizacji
+    echo -e "${BLUE}🎨 Konwertowanie ikony ICO na PNG...${NC}"
+    convert icon.ico deb_build/ytdlp-gui_1.0.1_amd64/usr/share/pixmaps/ytdlp-gui.png
+    convert icon.ico -resize 256x256 deb_build/ytdlp-gui_1.0.1_amd64/usr/share/icons/hicolor/256x256/apps/ytdlp-gui.png
     
     # Tworzenie pliku control
     cat > deb_build/ytdlp-gui_1.0.1_amd64/DEBIAN/control << EOF
@@ -68,6 +73,33 @@ Description: GUI dla yt-dlp - pobieranie filmów z YouTube i innych platform
  YTDLP-GUI to nowoczesny graficzny interfejs użytkownika dla yt-dlp
  umożliwiający łatwe pobieranie filmów z YouTube, CDA.pl i setek innych platform.
 EOF
+
+    # Tworzenie skryptu postinst do odświeżania ikon
+    cat > deb_build/ytdlp-gui_1.0.1_amd64/DEBIAN/postinst << EOF
+#!/bin/bash
+# Odświeżanie cache ikon i menu aplikacji
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache /usr/share/icons/hicolor -f -t >/dev/null 2>&1 || true
+fi
+EOF
+    chmod +x deb_build/ytdlp-gui_1.0.1_amd64/DEBIAN/postinst
+
+    # Tworzenie skryptu postrm do czyszczenia po odinstalowaniu
+    cat > deb_build/ytdlp-gui_1.0.1_amd64/DEBIAN/postrm << EOF
+#!/bin/bash
+if [ "\$1" = "remove" ] || [ "\$1" = "purge" ]; then
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database /usr/share/applications
+    fi
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache /usr/share/icons/hicolor -f -t >/dev/null 2>&1 || true
+    fi
+fi
+EOF
+    chmod +x deb_build/ytdlp-gui_1.0.1_amd64/DEBIAN/postrm
     
     # Tworzenie pliku .desktop
     cat > deb_build/ytdlp-gui_1.0.1_amd64/usr/share/applications/ytdlp-gui.desktop << EOF
@@ -80,6 +112,7 @@ Icon=ytdlp-gui
 Categories=AudioVideo;Video;Network;
 Terminal=false
 StartupNotify=true
+StartupWMClass=YTDLP-GUI
 EOF
     
     # Budowanie pakietu DEB
@@ -154,16 +187,20 @@ Icon=ytdlp-gui
 Categories=AudioVideo;Video;Network;
 Terminal=false
 StartupNotify=true
+StartupWMClass=YTDLP-GUI
 EOF
     
     cp YTDLP-GUI.desktop AppDir/usr/share/applications/
     cp YTDLP-GUI.desktop AppDir/
     
-    # Ikona
+    # Ikona - konwersja z ICO na PNG
+    echo -e "${BLUE}🎨 Konwertowanie ikony...${NC}"
     if command -v convert &> /dev/null; then
-        convert icon.ico AppDir/usr/share/icons/hicolor/256x256/apps/ytdlp-gui.png
-        cp AppDir/usr/share/icons/hicolor/256x256/apps/ytdlp-gui.png AppDir/
+        convert icon.ico -resize 256x256 AppDir/usr/share/icons/hicolor/256x256/apps/ytdlp-gui.png
+        cp AppDir/usr/share/icons/hicolor/256x256/apps/ytdlp-gui.png AppDir/ytdlp-gui.png
+        echo -e "${GREEN}✅ Ikona skonwertowana (ICO → PNG)${NC}"
     else
+        echo -e "${YELLOW}⚠️ ImageMagick nie znaleziony, używam ICO${NC}"
         cp icon.ico AppDir/ytdlp-gui.png
     fi
     
