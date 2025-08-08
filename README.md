@@ -7,7 +7,7 @@
 **Nowoczesny graficzny interfejs użytkownika dla yt-dlp**
 
 *Pobieraj filmy i muzykę z YouTube, CDA.pl i setek innych platform w kilku kliknięciach!*
-*Nie ważne czy film w CDA jest premium, czy nie! Pobierzesz dosłownie każdy plik wideo :)*
+*Nie jest ważne czy film w CDA jest premium, czy nie! Pobierzesz dosłownie każdy plik wideo :)*
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
 [![PyQt6](https://img.shields.io/badge/PyQt6-6.4+-green.svg)](https://pypi.org/project/PyQt6/)
