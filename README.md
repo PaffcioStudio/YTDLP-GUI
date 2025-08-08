@@ -409,7 +409,7 @@ Ten projekt jest udostępniony na licencji MIT. Zobacz plik [LICENSE](LICENSE) d
 
 **🌟 Jeśli YTDLP-GUI jest przydatne, zostaw gwiazdkę na GitHub! 🌟**
 
-Made with ❤️ by [Twoje Imię](https://github.com/twoj-profil)
+Made with ❤️ by [Paffcio](https://github.com/paffciostudio)
 
 [⬆️ Powrót na górę](#-ytdlp-gui)
 
