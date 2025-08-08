@@ -1,4 +1,4 @@
-# 🎬 YTDLP-GUI
+# 🎬 YTDLP-GUI | Supports Polish language only!
 
 <div align="center">
 
