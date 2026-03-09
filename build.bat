@@ -49,7 +49,7 @@ pip install PyQt6 requests pyinstaller
 
 :: Budowanie aplikacji
 echo %BLUE%⚙️ Kompilowanie aplikacji...%NC%
-pyinstaller --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons;icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets yt.py
+pyinstaller --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons;icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets main.py
 
 if errorlevel 1 (
     echo %RED%❌ Błąd podczas kompilacji!%NC%
@@ -88,7 +88,7 @@ pip install PyQt6 requests pyinstaller
 
 :: Budowanie portable
 echo %BLUE%⚙️ Kompilowanie wersji portable...%NC%
-pyinstaller --onedir --windowed --name=YTDLP-GUI-Portable --icon="icon.ico" --add-data "icons;icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets yt.py
+pyinstaller --onedir --windowed --name=YTDLP-GUI-Portable --icon="icon.ico" --add-data "icons;icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets main.py
 
 if errorlevel 1 (
     echo %RED%❌ Błąd podczas kompilacji portable!%NC%

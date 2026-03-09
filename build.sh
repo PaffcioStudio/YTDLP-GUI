@@ -42,29 +42,29 @@ build_deb() {
     
     # Budowanie binarki
     echo -e "${BLUE}⚙️ Kompilowanie aplikacji...${NC}"
-    pyinstaller --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons:icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets yt.py
+    pyinstaller --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons:icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets main.py
     
     # Tworzenie struktury DEB
     echo -e "${BLUE}📁 Tworzenie struktury pakietu DEB...${NC}"
-    mkdir -p deb_build/ytdlp-gui_1.0.1_amd64/DEBIAN
-    mkdir -p deb_build/ytdlp-gui_1.0.1_amd64/usr/bin
-    mkdir -p deb_build/ytdlp-gui_1.0.1_amd64/usr/share/applications
-    mkdir -p deb_build/ytdlp-gui_1.0.1_amd64/usr/share/pixmaps
-    mkdir -p deb_build/ytdlp-gui_1.0.1_amd64/usr/share/icons/hicolor/256x256/apps
+    mkdir -p deb_build/ytdlp-gui_1.1.0_amd64/DEBIAN
+    mkdir -p deb_build/ytdlp-gui_1.1.0_amd64/usr/bin
+    mkdir -p deb_build/ytdlp-gui_1.1.0_amd64/usr/share/applications
+    mkdir -p deb_build/ytdlp-gui_1.1.0_amd64/usr/share/pixmaps
+    mkdir -p deb_build/ytdlp-gui_1.1.0_amd64/usr/share/icons/hicolor/256x256/apps
     
     # Kopiowanie plików
-    cp dist/YTDLP-GUI deb_build/ytdlp-gui_1.0.1_amd64/usr/bin/ytdlp-gui
-    chmod +x deb_build/ytdlp-gui_1.0.1_amd64/usr/bin/ytdlp-gui
+    cp dist/YTDLP-GUI deb_build/ytdlp-gui_1.1.0_amd64/usr/bin/ytdlp-gui
+    chmod +x deb_build/ytdlp-gui_1.1.0_amd64/usr/bin/ytdlp-gui
     
     # Konwersja ikony ICO na PNG i kopiowanie do odpowiednich lokalizacji
     echo -e "${BLUE}🎨 Konwertowanie ikony ICO na PNG...${NC}"
-    convert icon.ico deb_build/ytdlp-gui_1.0.1_amd64/usr/share/pixmaps/ytdlp-gui.png
-    convert icon.ico -resize 256x256 deb_build/ytdlp-gui_1.0.1_amd64/usr/share/icons/hicolor/256x256/apps/ytdlp-gui.png
+    convert icon.ico deb_build/ytdlp-gui_1.1.0_amd64/usr/share/pixmaps/ytdlp-gui.png
+    convert icon.ico -resize 256x256 deb_build/ytdlp-gui_1.1.0_amd64/usr/share/icons/hicolor/256x256/apps/ytdlp-gui.png
     
     # Tworzenie pliku control
-    cat > deb_build/ytdlp-gui_1.0.1_amd64/DEBIAN/control << EOF
+    cat > deb_build/ytdlp-gui_1.1.0_amd64/DEBIAN/control << EOF
 Package: ytdlp-gui
-Version: 1.0.1
+Version: 1.1.0
 Section: multimedia
 Priority: optional
 Architecture: amd64
@@ -75,7 +75,7 @@ Description: GUI dla yt-dlp - pobieranie filmów z YouTube i innych platform
 EOF
 
     # Tworzenie skryptu postinst do odświeżania ikon
-    cat > deb_build/ytdlp-gui_1.0.1_amd64/DEBIAN/postinst << EOF
+    cat > deb_build/ytdlp-gui_1.1.0_amd64/DEBIAN/postinst << EOF
 #!/bin/bash
 # Odświeżanie cache ikon i menu aplikacji
 if command -v update-desktop-database >/dev/null 2>&1; then
@@ -85,10 +85,10 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache /usr/share/icons/hicolor -f -t >/dev/null 2>&1 || true
 fi
 EOF
-    chmod +x deb_build/ytdlp-gui_1.0.1_amd64/DEBIAN/postinst
+    chmod +x deb_build/ytdlp-gui_1.1.0_amd64/DEBIAN/postinst
 
     # Tworzenie skryptu postrm do czyszczenia po odinstalowaniu
-    cat > deb_build/ytdlp-gui_1.0.1_amd64/DEBIAN/postrm << EOF
+    cat > deb_build/ytdlp-gui_1.1.0_amd64/DEBIAN/postrm << EOF
 #!/bin/bash
 if [ "\$1" = "remove" ] || [ "\$1" = "purge" ]; then
     if command -v update-desktop-database >/dev/null 2>&1; then
@@ -99,10 +99,10 @@ if [ "\$1" = "remove" ] || [ "\$1" = "purge" ]; then
     fi
 fi
 EOF
-    chmod +x deb_build/ytdlp-gui_1.0.1_amd64/DEBIAN/postrm
+    chmod +x deb_build/ytdlp-gui_1.1.0_amd64/DEBIAN/postrm
     
     # Tworzenie pliku .desktop
-    cat > deb_build/ytdlp-gui_1.0.1_amd64/usr/share/applications/ytdlp-gui.desktop << EOF
+    cat > deb_build/ytdlp-gui_1.1.0_amd64/usr/share/applications/ytdlp-gui.desktop << EOF
 [Desktop Entry]
 Type=Application
 Name=YTDLP-GUI
@@ -117,17 +117,17 @@ EOF
     
     # Budowanie pakietu DEB
     echo -e "${BLUE}🔨 Budowanie pakietu DEB...${NC}"
-    dpkg-deb --build deb_build/ytdlp-gui_1.0.1_amd64
+    dpkg-deb --build deb_build/ytdlp-gui_1.1.0_amd64
     
     # Przeniesienie do dist
     mkdir -p dist
-    mv deb_build/ytdlp-gui_1.0.1_amd64.deb dist/
+    mv deb_build/ytdlp-gui_1.1.0_amd64.deb dist/
     
     # Usuwanie zbędnej binarki PyInstaller z dist
     rm -f dist/YTDLP-GUI
     
     deactivate
-    echo -e "${GREEN}✅ DEB zbudowany: dist/ytdlp-gui_1.0.1_amd64.deb${NC}"
+    echo -e "${GREEN}✅ DEB zbudowany: dist/ytdlp-gui_1.1.0_amd64.deb${NC}"
 }
 
 # Funkcja budowania AppImage
@@ -167,7 +167,7 @@ build_appimage() {
     
     # Budowanie binarki
     echo -e "${BLUE}⚙️ Kompilowanie aplikacji...${NC}"
-    pyinstaller --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons:icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets yt.py
+    pyinstaller --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons:icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets main.py
     
     # Tworzenie struktury AppDir
     echo -e "${BLUE}📁 Tworzenie struktury AppImage...${NC}"
@@ -350,7 +350,7 @@ build_with_wine() {
     
     # Budowanie tylko EXE (bez Portable - niepotrzebny syf)
     echo -e "${BLUE}⚙️ Kompilowanie Windows EXE...${NC}"
-    wine venv_wine_build/Scripts/pyinstaller.exe --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons;icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets yt.py
+    wine venv_wine_build/Scripts/pyinstaller.exe --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons;icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets main.py
     
     if [ $? -eq 0 ]; then
         mkdir -p dist
@@ -434,8 +434,8 @@ sleep 5\n\
 wine python -m venv venv_build\n\
 wine venv_build/Scripts/python.exe -m pip install --upgrade pip\n\
 wine venv_build/Scripts/pip.exe install PyQt6 requests pyinstaller\n\
-wine venv_build/Scripts/pyinstaller.exe --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons;icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets yt.py\n\
-wine venv_build/Scripts/pyinstaller.exe --onedir --windowed --name=YTDLP-GUI-Portable --icon="icon.ico" --add-data "icons;icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets yt.py\n\
+wine venv_build/Scripts/pyinstaller.exe --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons;icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets main.py\n\
+wine venv_build/Scripts/pyinstaller.exe --onedir --windowed --name=YTDLP-GUI-Portable --icon="icon.ico" --add-data "icons;icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets main.py\n\
 ' > build_windows.sh && chmod +x build_windows.sh
 
 CMD ["./build_windows.sh"]
@@ -500,7 +500,7 @@ case $choice in
         source venv_build/bin/activate
         pip install --upgrade pip
         pip install PyQt6 requests pyinstaller
-        pyinstaller --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons:icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets yt.py
+        pyinstaller --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons:icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets main.py
         mkdir -p dist
         cp dist/YTDLP-GUI dist/YTDLP-GUI-linux
         rm -f dist/YTDLP-GUI
@@ -518,7 +518,7 @@ case $choice in
         source venv_build/bin/activate
         pip install --upgrade pip
         pip install PyQt6 requests pyinstaller
-        pyinstaller --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons:icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets yt.py
+        pyinstaller --onefile --windowed --name=YTDLP-GUI --icon="icon.ico" --add-data "icons:icons" --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets main.py
         mkdir -p dist
         cp dist/YTDLP-GUI dist/YTDLP-GUI-linux
         rm -f dist/YTDLP-GUI
