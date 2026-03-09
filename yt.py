@@ -1,3 +1,5 @@
+## OLD! DO NOT USE!
+
 import os
 import sys
 import json
@@ -3446,4 +3448,5 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = YTDLPGUI()
     window.show()
+
     sys.exit(app.exec())
