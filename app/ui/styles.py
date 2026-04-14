@@ -96,6 +96,19 @@ def build_dark_stylesheet(palette: QPalette) -> str:
             background-color: {base}; color: {text}; height: 20px;
         }}
         QProgressBar::chunk {{ background-color: {acc}; border-radius: 6px; }}
+        QCheckBox {{
+            spacing: 7px; padding: 2px 0;
+        }}
+        QCheckBox::indicator {{
+            width: 16px; height: 16px; border-radius: 4px;
+            border: 1px solid {btnD2}; background-color: {base};
+        }}
+        QCheckBox::indicator:checked {{
+            background-color: {acc}; border-color: {accD};
+        }}
+        QCheckBox::indicator:hover {{
+            border-color: {accL};
+        }}
     """
 
 
@@ -175,4 +188,17 @@ def build_white_stylesheet(palette: QPalette) -> str:
             background-color: {base}; color: {text}; height: 20px;
         }}
         QProgressBar::chunk {{ background-color: {acc}; border-radius: 6px; }}
+        QCheckBox {{
+            spacing: 7px; padding: 2px 0;
+        }}
+        QCheckBox::indicator {{
+            width: 16px; height: 16px; border-radius: 4px;
+            border: 1px solid #BBBBBB; background-color: {base};
+        }}
+        QCheckBox::indicator:checked {{
+            background-color: {acc}; border-color: {accD};
+        }}
+        QCheckBox::indicator:hover {{
+            border-color: {acc};
+        }}
     """

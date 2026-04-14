@@ -103,7 +103,7 @@ class YTDLPThread(QThread):
             # Fallback: jeśli Cloudflare zablokował, ponawiamy z --extractor-args "generic:impersonate=chrome"
             if not success and cloudflare_hit and self.is_running:
                 self.progress_signal.emit(
-                    "\n⚠️  Wykryto blokadę Cloudflare (HTTP 403). "
+                    "\nUWAGA: Wykryto blokadę Cloudflare (HTTP 403). "
                     "Ponawiam z --extractor-args \"generic:impersonate=chrome\"..."
                 )
                 logger.info("Cloudflare fallback: dodaję --extractor-args generic:impersonate=chrome")
@@ -526,9 +526,9 @@ class CDAStatusCheckThread(QThread):
                 return
             premium = self._test_premium()
             if premium.get("is_premium"):
-                msg = "✅ Zalogowano pomyślnie! Posiadasz dostęp do CDA Premium"
+                msg = "Zalogowano pomyślnie! Posiadasz dostęp do CDA Premium"
             else:
-                msg = "✅ Zalogowano pomyślnie! Posiadasz konto podstawowe bez Premium"
+                msg = "Zalogowano pomyślnie! Posiadasz konto podstawowe bez Premium"
             self.finished_signal.emit(True, msg)
         except Exception as e:
             logger.error(f"Błąd podczas sprawdzania CDA: {e}")
@@ -538,6 +538,7 @@ class CDAStatusCheckThread(QThread):
         return [
             str(self.ytdlp_path), "--username", self.email, "--password", self.password,
             "--verbose", "--simulate", "--no-download", "--get-title",
+            "--no-check-certificate",
             "--socket-timeout", str(DEFAULT_SOCKET_TIMEOUT), url,
         ]
 
@@ -621,8 +622,10 @@ class PreviewFetchThread(QThread):
         username  = self.mw.username.text().strip()
         password  = self.mw.password.text()
         if self.url and "cda.pl" in self.url:
-            if cda_email and cda_pass:
-                # Przekazuj dane dla wszystkich filmów CDA (premium i zwykłych)
+            args += ["--no-check-certificate"]
+            if "/vfilm" in self.url and cda_email and cda_pass:
+                # Tylko premium (/vfilm) wymaga credentials.
+                # Zwykłe filmy CDA działają anonimowo; podanie credentials powoduje HTTP 403.
                 args += ["--username", cda_email, "--password", cda_pass]
         else:
             if cda_email and cda_pass:
@@ -675,11 +678,13 @@ class BatchPreviewThread(QThread):
                 cmd = [ytdlp, "-s", "--dump-json", "--socket-timeout", str(DEFAULT_SOCKET_TIMEOUT)]
                 if fmt:
                     cmd += ["-f", fmt]
-                if "cda.pl" in u and "/vfilm" in u:
-                    cda_email = self.mw.cda_email.text().strip()
-                    cda_pass  = self.mw.cda_password.text()
-                    if cda_email and cda_pass:
-                        cmd += ["--username", cda_email, "--password", cda_pass]
+                if "cda.pl" in u:
+                    cmd += ["--no-check-certificate"]
+                    if "/vfilm" in u:
+                        cda_email = self.mw.cda_email.text().strip()
+                        cda_pass  = self.mw.cda_password.text()
+                        if cda_email and cda_pass:
+                            cmd += ["--username", cda_email, "--password", cda_pass]
                 cmd.append(u)
                 p = subprocess.run(
                     cmd, capture_output=True, text=True, encoding="utf-8",
@@ -725,8 +730,11 @@ class TitleFetchThread(QThread):
         try:
             cmd = [
                 self.ytdlp_path, "--get-title", "--simulate",
-                "--socket-timeout", str(DEFAULT_SOCKET_TIMEOUT), self.url,
+                "--socket-timeout", str(DEFAULT_SOCKET_TIMEOUT),
             ]
+            if "cda.pl" in self.url:
+                cmd += ["--no-check-certificate"]
+            cmd.append(self.url)
             r = subprocess.run(
                 cmd, capture_output=True, text=True, encoding="utf-8",
                 errors="ignore", timeout=20, creationflags=_creationflags(),
@@ -746,14 +754,54 @@ class TitleFetchThread(QThread):
 # ===========================================================================
 
 def _estimate_bytes(data: dict):
+    # 1. requested_downloads – najbardziej precyzyjne (po wyborze formatu)
     req = data.get("requested_downloads")
     if req and isinstance(req, list):
         s = sum(
             int(p.get("filesize") or p.get("filesize_approx") or 0)
             for p in req
         )
-        return s if s > 0 else None
-    return data.get("filesize") or data.get("filesize_approx")
+        if s > 0:
+            return s
+
+    # 2. requested_formats – DASH: wideo + audio jako osobne strumienie
+    req_fmts = data.get("requested_formats")
+    if req_fmts and isinstance(req_fmts, list):
+        s = sum(
+            int(f.get("filesize") or f.get("filesize_approx") or 0)
+            for f in req_fmts
+        )
+        if s > 0:
+            return s
+
+    # 3. Globalny filesize na poziomie wideo
+    top = data.get("filesize") or data.get("filesize_approx")
+    if top:
+        return top
+
+    # 4. Przeszukaj listę formats i zsumuj wybrany format wideo + audio
+    fmt_id = data.get("format_id", "")
+    formats = data.get("formats")
+    if formats and isinstance(formats, list):
+        # Jeśli format_id to "X+Y" (DASH), zsumuj oba
+        ids = set(fmt_id.replace("+", " ").split()) if fmt_id else set()
+        if ids:
+            s = sum(
+                int(f.get("filesize") or f.get("filesize_approx") or 0)
+                for f in formats
+                if f.get("format_id") in ids
+            )
+            if s > 0:
+                return s
+        # Fallback: największy pojedynczy format z listy
+        best = max(
+            (int(f.get("filesize") or f.get("filesize_approx") or 0) for f in formats),
+            default=0,
+        )
+        if best > 0:
+            return best
+
+    return None
 
 
 def _download_thumbnail(video_id: str, thumb_url: str):
