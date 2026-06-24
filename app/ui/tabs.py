@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 from ..config import FFMPEG_PATH_WINDOWS, LIBS_DIR, YTDLP_PATH_WINDOWS
 from ..queue_widget import QueueListWidget
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 
 
 def _hsep():
@@ -164,7 +164,7 @@ def _init_format_tab(win, tab_widget: QWidget):
     # wspólne opcje pliku
     file_group = QGroupBox("Plik wyjściowy")
     file_lay = QFormLayout()
-    win.output_template = QLineEdit("%(title)s.%(ext)s")
+    win.output_template = QLineEdit("%(playlist_title|)s/%(title)s.%(ext)s")
     file_lay.addRow("Szablon nazwy:", win.output_template)
 
     win.output_path = QLineEdit()
@@ -505,7 +505,7 @@ def _init_settings_tab(win, tab_widget: QWidget):
     def_out_row = QHBoxLayout()
     def_out_row.addWidget(win.default_output_path); def_out_row.addWidget(browse_def)
     def_lay.addRow("Domyślna ścieżka wyjściowa:", def_out_row)
-    win.default_template = QLineEdit("%(title)s.%(ext)s")
+    win.default_template = QLineEdit("%(playlist_title|)s/%(title)s.%(ext)s")
     def_lay.addRow("Domyślny szablon nazwy:", win.default_template)
     win.auto_add_to_queue = QCheckBox("Automatycznie dodawaj wklejone URL-e do kolejki")
     def_lay.addRow(win.auto_add_to_queue)

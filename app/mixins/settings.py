@@ -100,7 +100,7 @@ class SettingsMixin:
 
         saved_out = s.value("default_output_path", "", type=str).strip()
         self.default_output_path.setText(saved_out or self.get_user_downloads_path())
-        self.default_template.setText(s.value("default_template", "%(title)s.%(ext)s", type=str).strip())
+        self.default_template.setText(s.value("default_template", "%(playlist_title|)s/%(title)s.%(ext)s", type=str).strip())
         self.auto_add_to_queue.setChecked(s.value("auto_add_to_queue", False, type=bool))
 
         theme = s.value("theme", "Dark", type=str)
@@ -198,7 +198,7 @@ class SettingsMixin:
         if r == QMessageBox.StandardButton.Yes:
             self.settings.clear()
             self.default_output_path.setText(self.get_user_downloads_path())
-            self.default_template.setText("%(title)s.%(ext)s")
+            self.default_template.setText("%(playlist_title|)s/%(title)s.%(ext)s")
             self.archive_file.setText(str(self.appdata_dir / "archive.txt"))
             self.load_settings(initial=False)
             self.apply_style()
