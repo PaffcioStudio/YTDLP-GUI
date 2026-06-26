@@ -309,22 +309,26 @@ class DownloadMixin:
         if mode in ("audio", "audio_adv"):
             cmd.append("-x")
             if mode == "audio":
-                cmd += ["--audio-format", afmt, "--audio-quality", str(aqi)]
+                if afmt != "najlepszy":
+                    cmd += ["--audio-format", afmt]
+                cmd += ["--audio-quality", str(aqi)]
                 if hasattr(self, "keep_video") and self.keep_video.isChecked(): cmd.append("-k")
                 if self.add_metadata.isChecked():    cmd.append("--add-metadata")
                 if self.embed_thumbnail.isChecked(): cmd.append("--embed-thumbnail")
                 out_path = self.audio_output_path.text().strip() or self.default_output_path.text().strip()
                 out_tmpl = self.audio_output_template.text().strip() or self.default_template.text().strip()
             else:
-                cmd += ["--audio-format", self.audio_format_adv.currentText(),
-                        "--audio-quality", str(self.audio_quality_adv.currentIndex())]
+                _afmt_adv = self.audio_format_adv.currentText()
+                if _afmt_adv != "najlepszy":
+                    cmd += ["--audio-format", _afmt_adv]
+                cmd += ["--audio-quality", str(self.audio_quality_adv.currentIndex())]
                 if self.keep_video_adv.isChecked(): cmd.append("-k")
                 out_path = self.default_output_path.text().strip()
                 out_tmpl = self.default_template.text().strip()
         else:
             if mode == "video_only":
                 # tylko strumień wideo, bez audio
-                if vqual == "Najlepsze (auto)":
+                if vqual == "Najlepsza (auto)":
                     fs = f"bv*[ext={vfmt}]/bv*"
                 else:
                     h = vqual.split("p")[0]
@@ -333,7 +337,7 @@ class DownloadMixin:
                     fs = fs.replace("bv*", f"bv*[vcodec~=^({vcodec})]")
                 cmd += ["-f", fs]
             else:
-                if vqual == "Najlepsze (auto)":
+                if vqual == "Najlepsza (auto)":
                     fs = f"bv*[ext={vfmt}]+ba[ext=m4a]/b[ext={vfmt}]/bv*+ba/b"
                 else:
                     h = vqual.split("p")[0]

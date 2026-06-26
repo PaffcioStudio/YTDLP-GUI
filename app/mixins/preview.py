@@ -25,7 +25,7 @@ class PreviewMixin:
         vfmt   = self.video_format.currentText()
         vqual  = self.video_quality.currentText()
         vcodec = self.video_codec.currentText()
-        if vqual == "Najlepsze (auto)":
+        if vqual == "Najlepsza (auto)":
             fs = f"bv*[ext={vfmt}]+ba[ext=m4a]/b[ext={vfmt}]/bv*+ba/b"
         else:
             try:
