@@ -21,6 +21,8 @@ class SettingsMixin:
         s.setValue("default_template",    self.default_template.text().strip())
         s.setValue("auto_add_to_queue",   self.auto_add_to_queue.isChecked())
         s.setValue("theme", self.theme_combo.currentText())
+        s.setValue("advanced_mode", self.advanced_mode.isChecked())
+        s.setValue("check_app_updates_on_start", self.check_app_updates_on_start.isChecked())
 
         # wideo
         s.setValue("video_format",    self.video_format.currentText())
@@ -106,6 +108,21 @@ class SettingsMixin:
         theme = s.value("theme", "Dark", type=str)
         idx = self.theme_combo.findText(theme)
         self.theme_combo.setCurrentIndex(idx if idx != -1 else 0)
+        adv = s.value("advanced_mode", False, type=bool)
+        # Blokuj sygnaly zeby nie wywolac podwojonej akcji podczas wczytywania
+        self.advanced_mode.blockSignals(True)
+        self.advanced_mode.setChecked(adv)
+        self.advanced_mode.blockSignals(False)
+        if hasattr(self, "_adv_mode_btn"):
+            self._adv_mode_btn.blockSignals(True)
+            self._adv_mode_btn.setChecked(adv)
+            self._adv_mode_btn.setText("- Tryb zaawansowany" if adv else "+ Tryb zaawansowany")
+            self._adv_mode_btn.blockSignals(False)
+        from app.ui.tabs import _apply_advanced_mode
+        _apply_advanced_mode(self, adv)
+        self.check_app_updates_on_start.setChecked(
+            s.value("check_app_updates_on_start", True, type=bool)
+        )
 
         self.ytdlp_path_input.setText(self.get_ytdlp_path())
         self.ffmpeg_path.setText(self.get_ffmpeg_path())

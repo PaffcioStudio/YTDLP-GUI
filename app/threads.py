@@ -819,3 +819,44 @@ def _download_thumbnail(video_id: str, thumb_url: str):
     except Exception as e:
         logger.debug(f"Nie udało się pobrać miniatury: {e}")
         return None
+
+
+class CheckAppUpdateThread(QThread):
+    """Sprawdza czy jest nowa wersja aplikacji na GitHub."""
+    result_signal = pyqtSignal(bool, str, str)
+    # (is_newer, latest_tag, release_url)
+
+    def __init__(self, current_version: str, parent=None):
+        super().__init__(parent)
+        self.current_version = current_version.strip().lstrip("v")
+
+    def run(self):
+        try:
+            api_url = "https://api.github.com/repos/PaffcioStudio/YTDLP-GUI/releases/latest"
+            response = requests.get(api_url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            tag = (data.get("tag_name") or "").strip().lstrip("v")
+            url = data.get("html_url") or "https://github.com/PaffcioStudio/YTDLP-GUI/releases"
+            if not tag:
+                self.result_signal.emit(False, "", "")
+                return
+            newer = self._is_newer(tag, self.current_version)
+            self.result_signal.emit(newer, tag, url)
+        except Exception:
+            self.result_signal.emit(False, "", "")
+
+    @staticmethod
+    def _is_newer(latest: str, current: str) -> bool:
+        try:
+            from packaging.version import Version
+            return Version(latest) > Version(current)
+        except Exception:
+            pass
+        # Fallback: porównanie tuple (działa dla x.y.z)
+        def to_tuple(v):
+            try:
+                return tuple(int(x) for x in v.split("."))
+            except Exception:
+                return (0,)
+        return to_tuple(latest) > to_tuple(current)

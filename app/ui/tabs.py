@@ -15,10 +15,32 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from ..config import FFMPEG_PATH_WINDOWS, LIBS_DIR, YTDLP_PATH_WINDOWS
+from ..config import FFMPEG_PATH_WINDOWS, LIBS_DIR, YTDLP_PATH_WINDOWS, get_icon_path
 from ..queue_widget import QueueListWidget
 
-APP_VERSION = "1.2.1"
+def _read_version() -> str:
+    import pathlib, sys, os
+    candidates = []
+    # 1. PyInstaller onefile - sys._MEIPASS (EXE Windows i Linux)
+    if hasattr(sys, "_MEIPASS"):
+        candidates.append(pathlib.Path(sys._MEIPASS) / "VERSION")
+    # 2. AppImage - zmienna srodowiskowa APPDIR
+    if os.environ.get("APPDIR"):
+        candidates.append(pathlib.Path(os.environ["APPDIR"]) / "usr" / "share" / "ytdlp-gui" / "VERSION")
+    # 3. DEB - zainstalowany systemowo
+    candidates.append(pathlib.Path("/usr/share/ytdlp-gui/VERSION"))
+    # 4. Uruchomienie z source (dev)
+    candidates.append(pathlib.Path(__file__).parent.parent.parent / "VERSION")
+    for path in candidates:
+        try:
+            v = path.read_text().strip()
+            if v:
+                return v
+        except Exception:
+            continue
+    return "?.?.?"
+
+APP_VERSION = _read_version()
 
 
 def _hsep():
@@ -93,6 +115,33 @@ def init_queue_panel(win, parent: QWidget):
 # Zakładki opcji (lewa kolumna)
 # ---------------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------------
+# Tryb zaawansowany - helper
+# ---------------------------------------------------------------------------
+
+def _apply_advanced_mode(win, enabled: bool):
+    """Pokazuje lub chowa zakladki Playlista i Zaawansowane."""
+    tabs = win.options_tabs
+    if enabled:
+        titles = [tabs.tabText(i) for i in range(tabs.count())]
+        if "Playlista" not in titles:
+            tabs.insertTab(1, win._playlist_tab_widget, "Playlista")
+        titles = [tabs.tabText(i) for i in range(tabs.count())]
+        if "Zaawansowane" not in titles:
+            pl_idx = titles.index("Playlista") if "Playlista" in titles else 1
+            tabs.insertTab(pl_idx + 1, win._advanced_tab_widget, "Zaawansowane")
+    else:
+        for name in ["Zaawansowane", "Playlista"]:
+            titles = [tabs.tabText(i) for i in range(tabs.count())]
+            if name in titles:
+                tabs.removeTab(titles.index(name))
+
+
+# ---------------------------------------------------------------------------
+# init_options_tabs
+# ---------------------------------------------------------------------------
+
 def init_options_tabs(win, parent: QWidget):
     layout = QVBoxLayout(parent)
     layout.setContentsMargins(0, 0, 0, 0)
@@ -111,7 +160,10 @@ def init_options_tabs(win, parent: QWidget):
     _init_settings_tab(win, settings_tab)
     _init_about_tab(win, about_tab)
 
-    win.options_tabs.addTab(format_tab,   "Format i tryb")
+    win._playlist_tab_widget = playlist_tab
+    win._advanced_tab_widget = advanced_tab
+
+    win.options_tabs.addTab(format_tab,   "Pobieranie")
     win.options_tabs.addTab(playlist_tab, "Playlista")
     win.options_tabs.addTab(advanced_tab, "Zaawansowane")
     win.options_tabs.addTab(settings_tab, "Ustawienia")
@@ -121,168 +173,186 @@ def init_options_tabs(win, parent: QWidget):
 
 
 # ---------------------------------------------------------------------------
-# "Format i tryb"
+# "Pobieranie" - glowna zakladka (dawniej "Format i tryb")
 # ---------------------------------------------------------------------------
 
 def _init_format_tab(win, tab_widget: QWidget):
     outer = QVBoxLayout(tab_widget)
+    outer.setSpacing(8)
+    outer.setContentsMargins(8, 8, 8, 8)
     scroll = QScrollArea(); scroll.setWidgetResizable(True)
     content = QWidget(); scroll.setWidget(content)
     cl = QVBoxLayout(content)
     cl.setSpacing(10)
 
-    # wybor trybu
-    mode_group = QGroupBox("Co chcesz pobrać?")
-    mode_layout = QVBoxLayout()
-    win._mode_both  = QRadioButton("Wideo z dźwiękiem  (domyślne)")
-    win._mode_audio = QRadioButton("Tylko audio  (np. muzyka z YouTube → mp3, flac…)")
-    win._mode_video = QRadioButton("Tylko wideo  (bez dźwięku)")
-    win._mode_both.setChecked(True)
-    mode_hint = QLabel(
-        "<i>Tryb <b>Audio</b>: pobiera strumień audio i konwertuje do wybranego formatu.<br>"
-        "Tryb <b>Wideo z dźwiękiem</b>: pobiera najlepsze wideo i scala z audio przez FFmpeg.</i>"
+    # --- 1. Playlisty vs pojedyncze wideo ---
+    pl_group = QGroupBox("Co pobrac?")
+    pl_layout = QHBoxLayout()
+    pl_layout.setSpacing(12)
+
+    win._pl_single = QRadioButton("Tylko to wideo")
+    win._pl_single.setToolTip("Ignoruje playlisty - pobiera tylko ten jeden film z linku.")
+    win._pl_all    = QRadioButton("Cala playliste")
+    win._pl_all.setToolTip("Pobiera wszystkie filmy z playlisty/kanalu.")
+    win._pl_all.setChecked(True)
+
+    pl_layout.addWidget(win._pl_single)
+    pl_layout.addWidget(win._pl_all)
+    pl_layout.addStretch()
+
+    # Przycisk trybu zaawansowanego - widoczny zawsze
+    win._adv_mode_btn = QPushButton("+ Tryb zaawansowany")
+    win._adv_mode_btn.setCheckable(True)
+    win._adv_mode_btn.setToolTip(
+        "Wlacza dodatkowe zakladki: Playlista (zakres, kolejnosc) i Zaawansowane (proxy, FFmpeg, argumenty)."
     )
-    mode_hint.setWordWrap(True)
+
+    def _on_adv_toggled(checked):
+        win._adv_mode_btn.setText("- Tryb zaawansowany" if checked else "+ Tryb zaawansowany")
+        _apply_advanced_mode(win, checked)
+        win.advanced_mode.blockSignals(True)
+        win.advanced_mode.setChecked(checked)
+        win.advanced_mode.blockSignals(False)
+
+    win._adv_mode_btn.toggled.connect(_on_adv_toggled)
+    pl_layout.addWidget(win._adv_mode_btn)
+
+    pl_group.setLayout(pl_layout)
+    cl.addWidget(pl_group)
+
+    # --- 2. Co pobrac: wideo/audio/wideo bez audio ---
+    mode_group = QGroupBox("Typ pobierania")
+    mode_layout = QHBoxLayout()
+    mode_layout.setSpacing(12)
+    win._mode_both  = QRadioButton("Wideo + audio")
+    win._mode_audio = QRadioButton("Tylko audio")
+    win._mode_video = QRadioButton("Tylko wideo (bez dzwieku)")
+    win._mode_both.setChecked(True)
+    win._mode_both.setToolTip("Pobiera najlepsze wideo i scala z audio przez FFmpeg.")
+    win._mode_audio.setToolTip("Pobiera audio i konwertuje do wybranego formatu (mp3, flac, itp.).")
+    win._mode_video.setToolTip("Sam strumien wideo bez dzwieku - do dalszej obrobki.")
     mode_layout.addWidget(win._mode_both)
     mode_layout.addWidget(win._mode_audio)
     mode_layout.addWidget(win._mode_video)
-    mode_layout.addWidget(mode_hint)
+    mode_layout.addStretch()
     mode_group.setLayout(mode_layout)
     cl.addWidget(mode_group)
 
-    # stos paneli
-    win._format_stack = QStackedWidget()
-    win._format_stack.addWidget(_make_video_audio_panel(win))  # 0
-    win._format_stack.addWidget(_make_audio_only_panel(win))   # 1
-    win._format_stack.addWidget(_make_video_only_panel(win))   # 2
-    cl.addWidget(win._format_stack)
+    # --- 3. Jakosc - zawsze na widoku ---
+    quality_group = QGroupBox("Jakosc")
+    quality_lay = QGridLayout()
+    quality_lay.setSpacing(8)
+    quality_lay.setColumnStretch(1, 1)
 
-    win._mode_both.toggled.connect( lambda c: win._format_stack.setCurrentIndex(0) if c else None)
-    win._mode_audio.toggled.connect(lambda c: win._format_stack.setCurrentIndex(1) if c else None)
-    win._mode_video.toggled.connect(lambda c: win._format_stack.setCurrentIndex(2) if c else None)
+    win.video_quality = QComboBox()
+    win.video_quality.addItems([
+        "Najlepsza (auto)", "2160p (4K)", "1440p (2K)",
+        "1080p", "720p", "480p", "360p", "240p", "144p",
+    ])
+    quality_lay.addWidget(QLabel("Jakosc wideo:"), 0, 0)
+    quality_lay.addWidget(win.video_quality, 0, 1)
 
-    # wspólne opcje pliku
-    file_group = QGroupBox("Plik wyjściowy")
+    win.video_format = QComboBox()
+    win.video_format.addItems(["mp4", "webm", "mkv", "flv", "avi"])
+    quality_lay.addWidget(QLabel("Format wideo:"), 1, 0)
+    quality_lay.addWidget(win.video_format, 1, 1)
+
+    win.video_codec = QComboBox()
+    win.video_codec.addItems(["auto", "h264", "h265", "vp9", "av1"])
+    quality_lay.addWidget(QLabel("Kodek wideo:"), 2, 0)
+    quality_lay.addWidget(win.video_codec, 2, 1)
+
+    win.audio_format = QComboBox()
+    win.audio_format.addItems(["najlepszy", "mp3", "aac", "flac", "m4a", "opus", "vorbis", "wav"])
+    quality_lay.addWidget(QLabel("Format audio:"), 3, 0)
+    quality_lay.addWidget(win.audio_format, 3, 1)
+
+    win.audio_quality = QComboBox()
+    win.audio_quality.addItems([
+        f"{i} ({'najlepsza' if i == 0 else 'najgorsza' if i == 9 else ''})" for i in range(10)
+    ])
+    quality_lay.addWidget(QLabel("Jakosc audio (VBR):"), 4, 0)
+    quality_lay.addWidget(win.audio_quality, 4, 1)
+
+    quality_group.setLayout(quality_lay)
+    cl.addWidget(quality_group)
+
+    # Widocznosc pol jakosci w zaleznosci od trybu
+    def _update_quality_visibility():
+        is_audio = win._mode_audio.isChecked()
+        is_video_only = win._mode_video.isChecked()
+        win.video_quality.setEnabled(not is_audio)
+        win.video_format.setEnabled(not is_audio)
+        win.video_codec.setEnabled(not is_audio)
+        win.audio_format.setEnabled(is_audio)
+        win.audio_quality.setEnabled(is_audio)
+
+    win._mode_both.toggled.connect(lambda _: _update_quality_visibility())
+    win._mode_audio.toggled.connect(lambda _: _update_quality_visibility())
+    win._mode_video.toggled.connect(lambda _: _update_quality_visibility())
+    _update_quality_visibility()
+
+    # --- 4. Plik wyjsciowy ---
+    file_group = QGroupBox("Plik wyjsciowy")
     file_lay = QFormLayout()
-    win.output_template = QLineEdit("%(playlist_title|)s/%(title)s.%(ext)s")
-    file_lay.addRow("Szablon nazwy:", win.output_template)
+    file_lay.setSpacing(6)
 
     win.output_path = QLineEdit()
-    browse_out = QPushButton(" Przeglądaj...")
+    browse_out = QPushButton(" Przegladaj...")
     browse_out.setIcon(win.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
     browse_out.clicked.connect(win.browse_output_path)
     out_row = QHBoxLayout()
     out_row.addWidget(win.output_path); out_row.addWidget(browse_out)
-    file_lay.addRow("Katalog wyjściowy:", out_row)
+    file_lay.addRow("Katalog:", out_row)
+
+    win.output_template = QLineEdit("%(playlist_title|)s/%(title)s.%(ext)s")
+    win.output_template.setToolTip(
+        "Szablon nazwy plikow.\n"
+        "%(title)s - tytul, %(ext)s - rozszerzenie,\n"
+        "%(playlist_title|)s - nazwa playlisty (puste dla pojedynczego wideo)"
+    )
+    file_lay.addRow("Szablon nazwy:", win.output_template)
 
     win.limit_rate = QLineEdit()
-    win.limit_rate.setPlaceholderText("np. 50K lub 4.2M")
-    file_lay.addRow("Ograniczenie prędkości:", win.limit_rate)
-
-    win.retries = QSpinBox()
-    win.retries.setRange(0, 99); win.retries.setValue(10)
-    file_lay.addRow("Liczba prób (yt-dlp):", win.retries)
+    win.limit_rate.setPlaceholderText("np. 50K lub 4.2M  (puste = bez limitu)")
+    file_lay.addRow("Limit predkosci:", win.limit_rate)
 
     file_group.setLayout(file_lay)
     cl.addWidget(file_group)
+
+    # --- 5. Opcje osadzania ---
+    embed_group = QGroupBox("Opcje")
+    embed_lay = QVBoxLayout()
+    embed_lay.setSpacing(4)
+    win.embed_thumbnails = QCheckBox("Osadz miniaturke")
+    win.embed_thumbnails.setChecked(True)
+    win.embed_subs      = QCheckBox("Osadz napisy")
+    win.write_subs      = QCheckBox("Zapisz napisy do pliku")
+    win.write_auto_subs = QCheckBox("Zapisz automatyczne napisy")
+    win.add_metadata    = QCheckBox("Dodaj metadane (artysta, tytul, itp.)")
+    win.add_metadata.setChecked(True)
+    win.write_info_json = QCheckBox("Zapisz metadane do .info.json")
+    for w_ in (win.embed_thumbnails, win.embed_subs, win.write_subs,
+               win.write_auto_subs, win.add_metadata, win.write_info_json):
+        embed_lay.addWidget(w_)
+    embed_group.setLayout(embed_lay)
+    cl.addWidget(embed_group)
+
     cl.addStretch()
     outer.addWidget(scroll)
 
-    # aliasy dla SettingsMixin
+    # Aliasy dla kompatybilnosci z reszta kodu
     win.audio_output_template = win.output_template
     win.audio_output_path     = win.output_path
-
-
-def _lbl_right(text):
-    l = QLabel(text)
-    l.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-    return l
-
-
-def _make_video_audio_panel(win) -> QWidget:
-    w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(0, 0, 0, 0)
-    g = QGroupBox("Parametry wideo"); gl = QGridLayout()
-    gl.setSpacing(8); gl.setColumnStretch(1, 1)
-
-    win.video_format = QComboBox()
-    win.video_format.addItems(["mp4", "webm", "mkv", "flv", "avi"])
-    gl.addWidget(_lbl_right("Kontener:"), 0, 0); gl.addWidget(win.video_format, 0, 1)
-
-    win.video_quality = QComboBox()
-    win.video_quality.addItems([
-        "Najlepsze (auto)", "2160p (4K)", "1440p (2K)",
-        "1080p", "720p", "480p", "360p", "240p", "144p",
-    ])
-    gl.addWidget(_lbl_right("Jakość:"), 1, 0); gl.addWidget(win.video_quality, 1, 1)
-
-    win.video_codec = QComboBox()
-    win.video_codec.addItems(["auto", "h264", "h265", "vp9", "av1"])
-    gl.addWidget(_lbl_right("Kodek:"), 2, 0); gl.addWidget(win.video_codec, 2, 1)
-    g.setLayout(gl); lay.addWidget(g)
-
-    ch_g = QGroupBox("Dodatkowe opcje"); ch_l = QVBoxLayout()
-    win.embed_thumbnails = QCheckBox("Osadź miniaturkę"); win.embed_thumbnails.setChecked(True)
-    win.embed_subs      = QCheckBox("Osadź napisy")
-    win.write_subs      = QCheckBox("Zapisz napisy do pliku")
-    win.write_auto_subs = QCheckBox("Zapisz automatyczne napisy")
-    win.write_info_json = QCheckBox("Zapisz metadane do .info.json")
-    for w_ in (win.embed_thumbnails, win.embed_subs, win.write_subs,
-               win.write_auto_subs, win.write_info_json):
-        ch_l.addWidget(w_)
-    ch_g.setLayout(ch_l); lay.addWidget(ch_g)
-
-    # wymagane przez DownloadMixin (nieużywane w tym trybie, ale muszą istnieć)
-    win.extract_audio = QCheckBox(); win.keep_video = QCheckBox()
-    lay.addStretch()
-    return w
-
-
-def _make_audio_only_panel(win) -> QWidget:
-    w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(0, 0, 0, 0)
-    g = QGroupBox("Parametry audio"); gl = QFormLayout()
-
-    win.audio_format = QComboBox()
-    win.audio_format.addItems(["najlepszy", "mp3", "aac", "flac", "m4a", "opus", "vorbis", "wav"])
-    gl.addRow("Format:", win.audio_format)
-
-    win.audio_quality = QComboBox()
-    win.audio_quality.addItems([
-        f"{i} ({'najlepsza' if i == 0 else 'najgorsza' if i in (9, 10) else ''})".strip()
-        for i in range(10)
-    ])
-    gl.addRow("Jakość (VBR, 0=najlepsza):", win.audio_quality)
-
-    win.add_metadata = QCheckBox("Dodaj metadane (artysta, tytuł itp.)")
-    win.add_metadata.setChecked(True)
-    gl.addRow(win.add_metadata)
-
-    win.embed_thumbnail = QCheckBox("Osadź miniaturkę w pliku audio")
-    win.embed_thumbnail.setChecked(True)
-    gl.addRow(win.embed_thumbnail)
-
-    win.prefer_ffmpeg = QCheckBox("Preferuj ffmpeg do konwersji")
-    gl.addRow(win.prefer_ffmpeg)
-
-    g.setLayout(gl); lay.addWidget(g)
-    lay.addStretch()
-    return w
-
-
-def _make_video_only_panel(win) -> QWidget:
-    w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(0, 0, 0, 0)
-    note = QLabel(
-        "<b>Tylko wideo</b> — pobiera strumień wideo bez scalania audio.<br>"
-        "Używa tych samych ustawień formatu/jakości/kodeka co tryb 'Wideo z dźwiękiem'.<br>"
-        "<i>Przydatne do dalszej obróbki w edytorze wideo.</i>"
-    )
-    note.setWordWrap(True)
-    lay.addWidget(note)
-    lay.addStretch()
-    return w
+    win.embed_thumbnail       = win.embed_thumbnails
+    win.extract_audio         = QCheckBox()  # ukryty, uzywany przez DownloadMixin
+    win.keep_video            = QCheckBox()
+    win.retries               = QSpinBox(); win.retries.setValue(10)
+    win.prefer_ffmpeg         = QCheckBox()
 
 
 # ---------------------------------------------------------------------------
-# "Playlista"
+# "Playlista" - tylko w trybie zaawansowanym
 # ---------------------------------------------------------------------------
 
 def _init_playlist_tab(win, tab_widget: QWidget):
@@ -290,49 +360,46 @@ def _init_playlist_tab(win, tab_widget: QWidget):
     scroll = QScrollArea(); scroll.setWidgetResizable(True)
     content = QWidget(); scroll.setWidget(content)
     cl = QVBoxLayout(content)
+    cl.setSpacing(10)
 
-    pl_mode_group = QGroupBox("Tryb pobierania playlisty")
-    pm_lay = QVBoxLayout()
-    win._pl_single = QRadioButton("Pobierz tylko jedno wideo (ignoruj playlistę)")
-    win._pl_all    = QRadioButton("Pobierz całą playlistę")
+    info = QLabel(
+        "<i>Te opcje sa dostepne tylko gdy pobierasz playlisty.<br>"
+        "Wybor 'Tylko to wideo' vs 'Cala playliste' jest na zakladce <b>Pobieranie</b>.</i>"
+    )
+    info.setWordWrap(True)
+    cl.addWidget(info)
+
     win._pl_range  = QRadioButton("Pobierz fragment / konkretne pozycje")
-    win._pl_all.setChecked(True)
-    pm_lay.addWidget(win._pl_single)
-    pm_lay.addWidget(win._pl_all)
-    pm_lay.addWidget(win._pl_range)
-    pl_mode_group.setLayout(pm_lay)
-    cl.addWidget(pl_mode_group)
 
-    win._pl_range_panel = QGroupBox("Zakres / konkretne pozycje")
+    range_group = QGroupBox("Zakres / konkretne pozycje")
     rp = QFormLayout()
     win.playlist_start = QSpinBox(); win.playlist_start.setRange(1, 9999)
     rp.addRow("Rozpocznij od pozycji:", win.playlist_start)
     win.playlist_end = QSpinBox(); win.playlist_end.setRange(0, 9999)
-    win.playlist_end.setSpecialValueText("Do końca")
-    rp.addRow("Zakończ na pozycji:", win.playlist_end)
+    win.playlist_end.setSpecialValueText("Do konca")
+    rp.addRow("Zakoncz na pozycji:", win.playlist_end)
     win.playlist_items = QLineEdit()
-    win.playlist_items.setPlaceholderText("np. 1,3,5-8  albo  2-10  (nadpisuje pola powyżej)")
+    win.playlist_items.setPlaceholderText("np. 1,3,5-8  albo  2-10  (nadpisuje pola powyzej)")
     rp.addRow("Konkretne pozycje:", win.playlist_items)
-    win._pl_range_panel.setLayout(rp)
-    win._pl_range_panel.setEnabled(False)
-    cl.addWidget(win._pl_range_panel)
+    range_group.setLayout(rp)
+    cl.addWidget(range_group)
 
-    order_group = QGroupBox("Kolejność pobierania")
+    order_group = QGroupBox("Kolejnosc pobierania")
     ol = QVBoxLayout()
-    win.playlist_reverse = QCheckBox("Pobierz w odwrotnej kolejności")
-    win.playlist_random  = QCheckBox("Pobierz w losowej kolejności")
+    win.playlist_reverse = QCheckBox("Pobierz w odwrotnej kolejnosci")
+    win.playlist_random  = QCheckBox("Pobierz w losowej kolejnosci")
     ol.addWidget(win.playlist_reverse); ol.addWidget(win.playlist_random)
     order_group.setLayout(ol)
     cl.addWidget(order_group)
 
-    arch_group = QGroupBox("Plik archiwum (pomiń już pobrane)")
+    arch_group = QGroupBox("Plik archiwum (pomin juz pobrane)")
     arch_lay = QVBoxLayout()
-    win.use_archive = QCheckBox("Użyj pliku archiwum")
+    win.use_archive = QCheckBox("Uzywaj pliku archiwum")
     arch_lay.addWidget(win.use_archive)
     arch_row = QHBoxLayout()
     win.archive_file = QLineEdit()
-    win.archive_file.setPlaceholderText("Domyślnie: archive.txt w katalogu aplikacji")
-    browse_arch = QPushButton(" Przeglądaj...")
+    win.archive_file.setPlaceholderText("Domyslnie: archive.txt w katalogu aplikacji")
+    browse_arch = QPushButton(" Przegladaj...")
     browse_arch.setIcon(win.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
     browse_arch.clicked.connect(win.browse_archive_file)
     arch_row.addWidget(win.archive_file); arch_row.addWidget(browse_arch)
@@ -342,8 +409,6 @@ def _init_playlist_tab(win, tab_widget: QWidget):
 
     cl.addStretch()
     layout.addWidget(scroll)
-
-    win._pl_range.toggled.connect(win._pl_range_panel.setEnabled)
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +438,7 @@ def _init_advanced_tab(win, tab_widget: QWidget):
     auth_lay.addRow("Nazwa użytkownika:", win.username)
     win.password = QLineEdit(); win.password.setEchoMode(QLineEdit.EchoMode.Password)
     win.password_show_btn = QPushButton()
-    win.password_show_btn.setIcon(QIcon("icons/eye.png"))
+    win.password_show_btn.setIcon(QIcon(get_icon_path("eye.png")))
     win.password_show_btn.setFixedSize(QSize(30, 24))
     win.password_show_btn.setCheckable(True)
     win.password_show_btn.toggled.connect(win.toggle_password_visibility)
@@ -452,107 +517,160 @@ def _init_advanced_tab(win, tab_widget: QWidget):
 # "Ustawienia" — z podzakładkami
 # ---------------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------------
+# "Ustawienia"
+# ---------------------------------------------------------------------------
+
 def _init_settings_tab(win, tab_widget: QWidget):
     outer = QVBoxLayout(tab_widget)
     inner_tabs = QTabWidget()
     style = win.style()
 
-    # Podzakładka: Narzędzia
-    tools_w = QWidget()
-    tools_scroll = QScrollArea(); tools_scroll.setWidgetResizable(True)
-    tools_content = QWidget(); tools_scroll.setWidget(tools_content)
-    tl = QVBoxLayout(tools_content)
-    ytdlp_group = QGroupBox("Konfiguracja narzędzi")
-    ytdlp_lay = QFormLayout()
-    win.ytdlp_path_input = QLineEdit(win.get_ytdlp_path())
-    win.ytdlp_path_input.setPlaceholderText(f"Domyślnie: {YTDLP_PATH_WINDOWS} (Windows) lub 'yt-dlp' (PATH)")
-    browse_ytdlp = QPushButton(" Przeglądaj...")
-    browse_ytdlp.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
-    browse_ytdlp.clicked.connect(win.browse_ytdlp_path)
-    ytdlp_row = QHBoxLayout()
-    ytdlp_row.addWidget(win.ytdlp_path_input); ytdlp_row.addWidget(browse_ytdlp)
-    ytdlp_lay.addRow("Ścieżka do YT-DLP:", ytdlp_row)
-    win.ffmpeg_path = QLineEdit(win.get_ffmpeg_path())
-    win.ffmpeg_path.setPlaceholderText(f"Domyślnie: {FFMPEG_PATH_WINDOWS} (Windows) lub 'ffmpeg' (PATH)")
-    browse_ffmpeg = QPushButton(" Przeglądaj...")
-    browse_ffmpeg.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
-    browse_ffmpeg.clicked.connect(win.browse_ffmpeg_path)
-    ffmpeg_row = QHBoxLayout()
-    ffmpeg_row.addWidget(win.ffmpeg_path); ffmpeg_row.addWidget(browse_ffmpeg)
-    ytdlp_lay.addRow("Ścieżka do FFmpeg:", ffmpeg_row)
-    win.check_ytdlp_updates = QCheckBox("Sprawdzaj aktualizacje YT-DLP przy starcie")
-    ytdlp_lay.addRow(win.check_ytdlp_updates)
-    win.auto_download_ffmpeg = QCheckBox("Automatycznie pobieraj FFmpeg jeśli brak")
-    win.auto_download_ffmpeg.setToolTip("Windows: Essentials, Linux: static build.")
-    win.auto_download_ffmpeg.setChecked(True)
-    ytdlp_lay.addRow(win.auto_download_ffmpeg)
-    ytdlp_group.setLayout(ytdlp_lay)
-    tl.addWidget(ytdlp_group); tl.addStretch()
-    tools_w_lay = QVBoxLayout(tools_w); tools_w_lay.setContentsMargins(0,0,0,0)
-    tools_w_lay.addWidget(tools_scroll)
-
-    # Podzakładka: Ogólne
+    # --- Podzakladka: Ogolne ---
     general_w = QWidget()
     gen_scroll = QScrollArea(); gen_scroll.setWidgetResizable(True)
     gen_content = QWidget(); gen_scroll.setWidget(gen_content)
     gl = QVBoxLayout(gen_content)
-    def_group = QGroupBox("Domyślne ustawienia")
-    def_lay = QFormLayout()
+
+    def_group = QGroupBox("Domyslne ustawienia pobierania")
+    def_lay = QFormLayout(); def_lay.setSpacing(6)
+
     win.default_output_path = QLineEdit()
-    browse_def = QPushButton(" Przeglądaj...")
+    browse_def = QPushButton(" Przegladaj...")
     browse_def.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
     browse_def.clicked.connect(win.browse_default_output_path)
     def_out_row = QHBoxLayout()
     def_out_row.addWidget(win.default_output_path); def_out_row.addWidget(browse_def)
-    def_lay.addRow("Domyślna ścieżka wyjściowa:", def_out_row)
+    def_lay.addRow("Domyslna sciezka wyjsciowa:", def_out_row)
+
     win.default_template = QLineEdit("%(playlist_title|)s/%(title)s.%(ext)s")
-    def_lay.addRow("Domyślny szablon nazwy:", win.default_template)
+    win.default_template.setToolTip(
+        "Szablon nazwy plikow.\n%(title)s, %(ext)s, %(playlist_title|)s itp."
+    )
+    def_lay.addRow("Domyslny szablon nazwy:", win.default_template)
+
     win.auto_add_to_queue = QCheckBox("Automatycznie dodawaj wklejone URL-e do kolejki")
     def_lay.addRow(win.auto_add_to_queue)
+    def_group.setLayout(def_lay)
+    gl.addWidget(def_group)
+
+    ui_group = QGroupBox("Interfejs")
+    ui_lay = QFormLayout(); ui_lay.setSpacing(6)
+
     win.theme_combo = QComboBox()
     win.theme_combo.addItems(["Dark", "White"])
     win.theme_combo.currentIndexChanged.connect(win.change_theme)
-    def_lay.addRow("Motyw GUI:", win.theme_combo)
-    def_group.setLayout(def_lay)
-    gl.addWidget(def_group); gl.addStretch()
-    gen_w_lay = QVBoxLayout(general_w); gen_w_lay.setContentsMargins(0,0,0,0)
+    ui_lay.addRow("Motyw:", win.theme_combo)
+
+    win.advanced_mode = QCheckBox("Tryb zaawansowany (zakladki Playlista i Zaawansowane)")
+    win.advanced_mode.setToolTip(
+        "Wlacza dodatkowe zakladki z opcjami zakresu playlist,\n"
+        "proxy, argumentow FFmpeg i innych zaawansowanych ustawien."
+    )
+    win.advanced_mode.toggled.connect(lambda checked: _apply_advanced_mode(win, checked))
+    win.advanced_mode.toggled.connect(lambda checked: win._adv_mode_btn.setChecked(checked))
+    ui_lay.addRow(win.advanced_mode)
+    ui_group.setLayout(ui_lay)
+    gl.addWidget(ui_group)
+    gl.addStretch()
+
+    gen_w_lay = QVBoxLayout(general_w); gen_w_lay.setContentsMargins(0, 0, 0, 0)
     gen_w_lay.addWidget(gen_scroll)
 
-    # Podzakładka: CDA
-    cda_w = QWidget()
-    cda_scroll = QScrollArea(); cda_scroll.setWidgetResizable(True)
-    cda_content = QWidget(); cda_scroll.setWidget(cda_content)
-    cdal = QVBoxLayout(cda_content)
+    # --- Podzakladka: Narzedzia ---
+    tools_w = QWidget()
+    tools_scroll = QScrollArea(); tools_scroll.setWidgetResizable(True)
+    tools_content = QWidget(); tools_scroll.setWidget(tools_content)
+    tl = QVBoxLayout(tools_content)
+
+    ytdlp_group = QGroupBox("Sciezki do narzedzi")
+    ytdlp_lay = QFormLayout(); ytdlp_lay.setSpacing(6)
+
+    win.ytdlp_path_input = QLineEdit(win.get_ytdlp_path())
+    win.ytdlp_path_input.setPlaceholderText(f"Domyslnie: {YTDLP_PATH_WINDOWS} (Win) lub 'yt-dlp' (PATH)")
+    browse_ytdlp = QPushButton(" Przegladaj...")
+    browse_ytdlp.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
+    browse_ytdlp.clicked.connect(win.browse_ytdlp_path)
+    ytdlp_row = QHBoxLayout()
+    ytdlp_row.addWidget(win.ytdlp_path_input); ytdlp_row.addWidget(browse_ytdlp)
+    ytdlp_lay.addRow("Sciezka do YT-DLP:", ytdlp_row)
+
+    win.ffmpeg_path = QLineEdit(win.get_ffmpeg_path())
+    win.ffmpeg_path.setPlaceholderText(f"Domyslnie: {FFMPEG_PATH_WINDOWS} (Win) lub 'ffmpeg' (PATH)")
+    browse_ffmpeg = QPushButton(" Przegladaj...")
+    browse_ffmpeg.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
+    browse_ffmpeg.clicked.connect(win.browse_ffmpeg_path)
+    ffmpeg_row = QHBoxLayout()
+    ffmpeg_row.addWidget(win.ffmpeg_path); ffmpeg_row.addWidget(browse_ffmpeg)
+    ytdlp_lay.addRow("Sciezka do FFmpeg:", ffmpeg_row)
+
+    win.check_ytdlp_updates = QCheckBox("Sprawdzaj aktualizacje YT-DLP przy starcie")
+    ytdlp_lay.addRow(win.check_ytdlp_updates)
+
+    win.auto_download_ffmpeg = QCheckBox("Automatycznie pobieraj FFmpeg jesli brak")
+    win.auto_download_ffmpeg.setToolTip("Windows: Essentials, Linux: static build.")
+    win.auto_download_ffmpeg.setChecked(True)
+    ytdlp_lay.addRow(win.auto_download_ffmpeg)
+
+    ytdlp_group.setLayout(ytdlp_lay)
+    tl.addWidget(ytdlp_group); tl.addStretch()
+
+    tools_w_lay = QVBoxLayout(tools_w); tools_w_lay.setContentsMargins(0, 0, 0, 0)
+    tools_w_lay.addWidget(tools_scroll)
+
+    # --- Podzakladka: Konta ---
+    accounts_w = QWidget()
+    acc_scroll = QScrollArea(); acc_scroll.setWidgetResizable(True)
+    acc_content = QWidget(); acc_scroll.setWidget(acc_content)
+    acl = QVBoxLayout(acc_content)
+    acl.setSpacing(12)
+
+    acc_info = QLabel(
+        "<i>Tutaj skonfiguruj konta dla serwisow wymagajacych logowania.<br>"
+        "Dane sa przechowywane lokalnie w ustawieniach aplikacji.</i>"
+    )
+    acc_info.setWordWrap(True)
+    acl.addWidget(acc_info)
+
+    # CDA Premium
     cda_group = QGroupBox("CDA Premium")
-    cda_lay = QFormLayout()
+    cda_lay = QFormLayout(); cda_lay.setSpacing(6)
+
     win.cda_email = QLineEdit(); win.cda_email.setPlaceholderText("twoj@email.com")
     cda_lay.addRow("Email:", win.cda_email)
+
     win.cda_password = QLineEdit(); win.cda_password.setEchoMode(QLineEdit.EchoMode.Password)
     win.cda_password_show_btn = QPushButton()
-    win.cda_password_show_btn.setIcon(QIcon("icons/eye.png"))
+    win.cda_password_show_btn.setIcon(QIcon(get_icon_path("eye.png")))
     win.cda_password_show_btn.setFixedSize(QSize(30, 24))
     win.cda_password_show_btn.setCheckable(True)
     win.cda_password_show_btn.toggled.connect(win.toggle_cda_password_visibility)
     cda_pass_row = QHBoxLayout()
     cda_pass_row.addWidget(win.cda_password); cda_pass_row.addWidget(win.cda_password_show_btn)
-    cda_lay.addRow("Hasło:", cda_pass_row)
+    cda_lay.addRow("Haslo:", cda_pass_row)
+
     cda_status_row = QHBoxLayout()
     win.cda_status_label = QLabel("Status: Nie sprawdzono")
-    win.check_cda_status_btn = QPushButton("Sprawdź status")
+    win.check_cda_status_btn = QPushButton("Sprawdz status")
     win.check_cda_status_btn.clicked.connect(win.run_cda_status_check)
     cda_status_row.addWidget(win.cda_status_label)
     cda_status_row.addStretch()
     cda_status_row.addWidget(win.check_cda_status_btn)
     cda_lay.addRow(cda_status_row)
     cda_group.setLayout(cda_lay)
-    cdal.addWidget(cda_group); cdal.addStretch()
-    cda_w_lay = QVBoxLayout(cda_w); cda_w_lay.setContentsMargins(0,0,0,0)
-    cda_w_lay.addWidget(cda_scroll)
+    acl.addWidget(cda_group)
 
-    inner_tabs.addTab(tools_w,   "Narzędzia")
-    inner_tabs.addTab(general_w, "Ogólne")
-    inner_tabs.addTab(cda_w,     "CDA Premium")
+    acl.addStretch()
+    accounts_w_lay = QVBoxLayout(accounts_w); accounts_w_lay.setContentsMargins(0, 0, 0, 0)
+    accounts_w_lay.addWidget(acc_scroll)
 
+    # Skladamy podzakladki
+    inner_tabs.addTab(general_w, "Ogolne")
+    inner_tabs.addTab(tools_w,   "Narzedzia")
+    inner_tabs.addTab(accounts_w, "Konta")
+
+    # Przyciski zapisu
     save_row = QHBoxLayout()
     save_btn = QPushButton(" Zapisz ustawienia")
     save_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
@@ -562,7 +680,7 @@ def _init_settings_tab(win, tab_widget: QWidget):
     load_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton))
     load_btn.clicked.connect(lambda: win.load_settings(initial=False))
     save_row.addWidget(load_btn)
-    reset_btn = QPushButton(" Przywróć domyślne")
+    reset_btn = QPushButton(" Przywroc domyslne")
     reset_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DialogResetButton))
     reset_btn.clicked.connect(win.reset_settings)
     save_row.addWidget(reset_btn)
@@ -571,9 +689,44 @@ def _init_settings_tab(win, tab_widget: QWidget):
     outer.addLayout(save_row)
 
 
-# ---------------------------------------------------------------------------
-# "O programie"
-# ---------------------------------------------------------------------------
+def _check_app_update(win, btn):
+    from ..threads import CheckAppUpdateThread
+    btn.setEnabled(False)
+    win._app_update_lbl.setText("Sprawdzam...")
+
+    def on_result(is_newer, latest_tag, release_url):
+        btn.setEnabled(True)
+        if is_newer:
+            win._app_update_lbl.setText(
+                f'Dostepna nowa wersja: <a href="{release_url}"><b>v{latest_tag}</b></a> '
+                f'(masz v{APP_VERSION})'
+            )
+            from PyQt6.QtWidgets import QMessageBox
+            from PyQt6.QtCore import QUrl
+            from PyQt6.QtGui import QDesktopServices
+            dlg = QMessageBox(win)
+            dlg.setWindowTitle("Dostepna aktualizacja")
+            dlg.setIcon(QMessageBox.Icon.Information)
+            dlg.setText("<b>Dostepna jest nowa wersja YTDLP-GUI!</b>")
+            dlg.setInformativeText(
+                f"Twoja wersja: <b>v{APP_VERSION}</b><br>"
+                f"Nowa wersja: <b>v{latest_tag}</b><br><br>"
+                f"Czy chcesz przejsc na strone pobierania?"
+            )
+            btn_download = dlg.addButton("Pobierz", QMessageBox.ButtonRole.AcceptRole)
+            dlg.addButton("Pozniej", QMessageBox.ButtonRole.RejectRole)
+            dlg.exec()
+            if dlg.clickedButton() == btn_download:
+                QDesktopServices.openUrl(QUrl(release_url))
+        elif latest_tag:
+            win._app_update_lbl.setText(f"Masz najnowsza wersje (v{APP_VERSION}).")
+        else:
+            win._app_update_lbl.setText("Nie udalo sie sprawdzic aktualizacji.")
+
+    win._update_check_thread = CheckAppUpdateThread(APP_VERSION)
+    win._update_check_thread.result_signal.connect(on_result)
+    win._update_check_thread.start()
+
 
 def _make_link_label(text: str, url: str) -> QLabel:
     lbl = QLabel(f'<a href="{url}">{text}</a>')
@@ -620,6 +773,33 @@ def _init_about_tab(win, tab_widget: QWidget):
         _make_link_label("github.com/FFmpeg/FFmpeg", "https://github.com/FFmpeg/FFmpeg"))
     links_group.setLayout(links_lay)
     layout.addWidget(links_group)
+    layout.addSpacing(8)
+
+    # Sprawdzanie aktualizacji aplikacji
+    update_group = QGroupBox("Aktualizacje")
+    update_vlay = QVBoxLayout()
+
+    win.check_app_updates_on_start = QCheckBox("Sprawdzaj aktualizacje YTDLP-GUI przy starcie")
+    win.check_app_updates_on_start.setChecked(True)
+    win.check_app_updates_on_start.setToolTip(
+        "Jesli wlaczone, przy kazdym uruchomieniu aplikacja cicho sprawdza "
+        "czy dostepna jest nowsza wersja i informuje w logu oraz tutaj."
+    )
+    update_vlay.addWidget(win.check_app_updates_on_start)
+
+    update_row = QHBoxLayout()
+    win._app_update_lbl = QLabel("Kliknij przycisk lub poczekaj na sprawdzenie przy starcie.")
+    win._app_update_lbl.setWordWrap(True)
+    win._app_update_lbl.setOpenExternalLinks(True)
+    check_update_btn = QPushButton("Sprawdz teraz")
+    check_update_btn.setFixedWidth(130)
+    check_update_btn.clicked.connect(lambda: _check_app_update(win, check_update_btn))
+    update_row.addWidget(win._app_update_lbl, 1)
+    update_row.addWidget(check_update_btn)
+    update_vlay.addLayout(update_row)
+
+    update_group.setLayout(update_vlay)
+    layout.addWidget(update_group)
     layout.addStretch()
 
 

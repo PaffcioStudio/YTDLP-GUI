@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
 )
 
-from ..config import FFMPEG_BIN_DIR, LIBS_DIR, STRICT_URL_REGEX
+from ..config import FFMPEG_BIN_DIR, LIBS_DIR, STRICT_URL_REGEX, get_icon_path
 from ..threads import CDAStatusCheckThread
 
 logger = logging.getLogger(__name__)
@@ -38,14 +38,14 @@ class QueueMixin:
     def toggle_password_visibility(self, checked: bool):
         mode = QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
         self.password.setEchoMode(mode)
-        icon = "icons/eye-off.png" if checked else "icons/eye.png"
+        icon = get_icon_path("eye-off.png") if checked else get_icon_path("eye.png")
         self.password_show_btn.setIcon(QIcon(icon))
         self.password.setFocus()
 
     def toggle_cda_password_visibility(self, checked: bool):
         mode = QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
         self.cda_password.setEchoMode(mode)
-        icon = "icons/eye-off.png" if checked else "icons/eye.png"
+        icon = get_icon_path("eye-off.png") if checked else get_icon_path("eye.png")
         self.cda_password_show_btn.setIcon(QIcon(icon))
         self.cda_password.setFocus()
 

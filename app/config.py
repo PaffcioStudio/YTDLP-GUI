@@ -76,3 +76,27 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Sciezki do zasobow (ikony) - dziala w dev, PyInstaller, DEB, AppImage
+# ---------------------------------------------------------------------------
+
+def get_icons_dir() -> Path:
+    import sys, os
+    # PyInstaller onefile/onedir
+    if hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / "icons"
+    # AppImage
+    if os.environ.get("APPDIR"):
+        return Path(os.environ["APPDIR"]) / "usr" / "share" / "ytdlp-gui" / "icons"
+    # DEB systemowy
+    system_icons = Path("/usr/share/ytdlp-gui/icons")
+    if system_icons.exists():
+        return system_icons
+    # Dev - wzgledem tego pliku (app/config.py -> ../icons)
+    return Path(__file__).parent.parent / "icons"
+
+
+def get_icon_path(name: str) -> str:
+    return str(get_icons_dir() / name)
